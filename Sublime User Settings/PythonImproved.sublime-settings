@@ -1,0 +1,10 @@
+{
+	"extensions":
+	[
+		"py"
+	],
+
+    // Columns in which to display vertical rulers
+    "rulers": [72,80],
+}
+
