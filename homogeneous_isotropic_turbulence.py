@@ -93,15 +93,18 @@ def homogeneous_isotropic_turbulence(args):
 
     solver = spectralLES(comm, L, N, nu, eps_inj)
 
-    # -------------------------------------------------------------------------
-    # Initialize the simulation
+    # currently performing DNS, which should be minimally aliased, but does
+    # need to be isotropic, therefore overwrite the dealias filter with
+    # an isotropic filter
+    solver.dealias_filter = solver.les_filter
 
     # force only lowest wavemodes with peak at 2 and non-zero roll-off in modes
     # 1 and 3
-    solver.forcing_filter = solver.filter_kernel(None, kf=4.0)      # low pass
-    solver.forcing_filter*= 1.0-solver.filter_kernel(None, kf=2.0)  # high pass
+    solver.forcing_filter = solver.filter_kernel(4.0)      # low pass
+    solver.forcing_filter*= 1.0-solver.filter_kernel(2.0)  # high pass
 
-    # Initial Conditions
+    # -------------------------------------------------------------------------
+    # Initialize the simulation
     solver.Initialize_random_HIT_spectrum(Urms, k_exp, k_peak)
     # solver.Initialize_Taylor_Green_vortex()
 
@@ -154,14 +157,20 @@ def homogeneous_isotropic_turbulence(args):
     # Run the simulation
 
     solver.computeAD = solver.computeAD_vorticity_formulation
-    solver.computeSources = solver.computeSources_HIT_linear_forcing
 
     while t_sim < tlimit+1.e-8:
+        if tstep % 10 == 0:
+            k = comm.reduce(0.5*np.sum(np.square(solver.U))*(1./N)**3)
+            if comm.rank == 0:
+                print "KE = {}".format(k)
+
         t_sim += dt
         tstep += 1
 
         # Integrate the solution forward in time
-        solver.RK4_integrate(dt)
+        solver.RK4_integrate(dt,
+                             solver.computeSource_HIT_linear_forcing,
+                             solver.computeSource_Smagorinksy_SGS)
 
         # Update the dynamic dt based on CFL constraint
         dt = solver.new_dt_const_nu(cfl)

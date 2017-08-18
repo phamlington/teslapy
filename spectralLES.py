@@ -148,7 +148,10 @@ class spectralLES(object):
         self.K_Ksq = (self.K.astype(float)
                       /np.where(self.Ksq==0, 1, self.Ksq).astype(float))
 
-        kmax_dealias = self.nx//3+2
+        # standard dealias filter
+        # this is neither isotropic nor strictly correct for 3D FFTs
+        # can be replaced in the the calling program, of course.
+        kmax_dealias = 2./3.*(self.nx//2+1)
         self.dealias_filter = np.array((np.abs(self.K[0]) < kmax_dealias[0])
                                        *(np.abs(self.K[1]) < kmax_dealias[1])
                                        *(np.abs(self.K[2]) < kmax_dealias[2]),
@@ -159,32 +162,40 @@ class spectralLES(object):
         else:
             self.les_scale = les_scale
 
-        self.les_filter = self.filter_kernel(kmag/self.les_scale, Gtype)
+        self.les_filter = self.filter_kernel(self.les_scale, Gtype)
 
         if test_scale is None:
             self.test_scale = 0.5*kmax_dealias.min()
         else:
             self.test_scale = test_scale
 
-        self.test_filter = self.filter_kernel(kmag/self.test_scale, Gtype)
+        self.test_filter = self.filter_kernel(self.test_scale, Gtype)
 
         self.forcing_filter = np.ones_like(self.test_filter)
         self.forcing_rate = eps_inj
+
+        # Ck = 1.6
+        # Cs = sqrt((pi**-2)*((3*Ck)**-1.5))  # == 0.098...
+        Cs = 0.2
+        # so long as K, kmag, scales, etc. are integer, need to dimensionalize
+        D = self.L.min()/self.les_scale
+        self.smag_coef = 2.0*(Cs*D)**2
+        self.nuTmax = 0.0
 
         # MPI Local subdomain data arrays (1D Decomposition)
         nnz, ny, nx = self.nnx
         nz, nny, nk = self.nnk
 
-        self.U = np.empty((3, nnz, ny, nx))
-        self.omga = np.empty_like(self.U)
-        self.S = np.empty_like(self.U)
+        self.U = np.empty((3, nnz, ny, nx))     # solution vector
+        self.omga = np.empty_like(self.U)       # vorticity and vector memory
+        self.A = np.empty((3, 3, nnz, ny, nx))  # Tensor memory
         # P = np.empty((nnz, ny, nx))
 
         self.U_hat = np.empty((3, nz, nny, nk), dtype=complex)
         self.U_hat0= np.empty_like(self.U_hat)
         self.U_hat1= np.empty_like(self.U_hat)
-        self.S_hat = np.zeros_like(self.U_hat)
-        self.dU = np.empty_like(self.U_hat)
+        self.S_hat = np.zeros_like(self.U_hat)  # source-term vector memory
+        self.dU = np.empty_like(self.U_hat)     # RHS accumulator
 
     # Class Properities -------------------------------------------------------
 
@@ -198,21 +209,18 @@ class spectralLES(object):
 
     # Class Methods -----------------------------------------------------------
 
-    def filter_kernel(self, k_kf, Gtype='comp_exp', kf=None,
+    def filter_kernel(self, kf, Gtype='comp_exp', k_kf=None,
                       dtype=np.complex128):
         """
-        k_kf - spectral-space wavenumber field pre-normalized by filter cutoff
-               wavenumber. By passing this in the filter_kernel() function
-               remains agnostic to isotropic or anisotropic filtering, since
-               dealiasing can use anisotropic filters, but LES
-               must always use isotropic filters.
-               Set it to None if you want an isotropic filter with cutoff at
-               kf.
-        Gtype - filter kernel type
-        kf    - (Default: None) alternative to k_kf, input a cutoff wavenumber
-                to divide isotropic kmag by
+        kf    - input cutoff wavenumber for ensured isotropic filtering
+        Gtype - (Default='comp_exp') filter kernel type
+        k_kf  - (Default=None) spectral-space wavenumber field pre-normalized
+                by filter cutoff wavenumber. Pass this into
+                filter_kernel(), for anisotropic filtering, since this kernel
+                computes isotropic filter kernels by default.
+                If not None, kf is ignored.
         """
-        if kf is not None:
+        if k_kf is None:
             A = self.L/self.L.min()  # domain size aspect ratios
             A.resize((3, 1, 1, 1))   # ensure proper array broadcasting
             kmag = np.sqrt(np.sum(np.square(self.K.astype(float)/A), axis=0))
@@ -225,10 +233,10 @@ class spectralLES(object):
 
         elif Gtype == 'comp_exp':
             """
-            A 'COMPact EXPonential' filter which has
-            1) compact support in a ball of radius ell (or 1/ell)
-            2) is strictly positive, and
-            3) is smooth (infinitely differentiable)
+            A 'COMPact EXPonential' filter which:
+                1) has compact support in a ball of radius kf (1/kf)
+                2) is strictly positive, and
+                3) is smooth (infinitely differentiable)
             in _both_ physical and spectral space!
             """
             Hhat = np.exp(-k_kf**2/(0.25-k_kf**2))
@@ -354,30 +362,57 @@ class spectralLES(object):
 
         return
 
-    def computeSources_HIT_linear_forcing(self):
+    def computeSource_HIT_linear_forcing(self, *args):
         """
         Sources functions to be added to spectralLES solver instance
+        all *args are ignored
         """
-        # Update the HIT forcing function
+        # Update the HIT forcing function, use omga as vector memory
         self.S_hat[:] = self.U_hat*self.forcing_filter
-        self.S[0] = irfft3(self.comm, self.S_hat[0])
-        self.S[1] = irfft3(self.comm, self.S_hat[1])
-        self.S[2] = irfft3(self.comm, self.S_hat[2])
-        dvScale = self.forcing_rate/(self.comm.allreduce(psum(self.S*self.U))
-                                     *self.dx.prod())
-        self.S_hat *= dvScale
-        self.dU += self.S_hat
+        self.omga[0] = irfft3(self.comm, self.S_hat[0])
+        self.omga[1] = irfft3(self.comm, self.S_hat[1])
+        self.omga[2] = irfft3(self.comm, self.S_hat[2])
+        dvScale = self.forcing_rate/(self.comm.allreduce(
+                                     psum(self.omga*self.U))*self.dx.prod())
+        self.dU += dvScale*self.S_hat
 
         # if self.comm.rank == 0:
         #     print "dvScale = {}".format(dvScale)
 
-        return dvScale
+        return
 
-    def computeSources_None(self):
+    def computeSource_Smagorinksy_SGS(self, *args):
         """
-        Do-nothing source function
+        Standard Smagorinsky model (fixed C_s for now)
+        Note that self.A is the generic Tensor memory space, with the letter
+        S reserved for 'Source', as in self.S_hat.
+        all *args are ignored for now, but you could pass in a user-defined
+        Cs here, or some other kinds of parameters.
         """
-        pass
+        for i in range(3):
+            for j in range(i, 3):
+                self.A[j, i] = 0.5*irfft3(self.comm,
+                                          1j*(self.K[2-j]*self.U_hat[i]
+                                              +self.K[2-i]*self.U_hat[j]))
+                if i != j:
+                    self.A[i, j] = self.A[j, i]
+        # compute SGS flux tensor, (Cs*D)**2 use omga as working memory
+        self.omga[0] = np.sqrt(2.0*np.sum(np.square(self.A), axis=(0, 1)))
+        self.omga[0]*= self.smag_coef  # self.omga[0] == 2*nu_T
+
+        self.nuTmax = self.comm.allreduce(np.max(self.omga[0]), op=MPI.MAX)
+
+        self.S_hat[:] = 0.0
+        for i in range(3):
+            for j in range(3):
+                self.S_hat[i]+= 1j*self.K[2-j]*rfft3(self.comm,
+                                                     self.A[j, i]*self.omga[0])
+
+        self.S_hat *= self.les_filter  # Dealias/explicit filter
+
+        self.dU += self.S_hat
+
+        return
 
     def new_dt_const_nu(self, cfl):
         u1m = u2m = u3m = 0.0
@@ -386,7 +421,7 @@ class spectralLES(object):
         u3m = self.comm.allreduce(np.max(self.U[2]), op=MPI.MAX)
 
         dtMinHydro = cfl*min(self.dx[0]/u1m, self.dx[1]/u2m, self.dx[2]/u3m)
-        dtMinDiff = min(self.dx)**2/(2.0*self.nu)
+        dtMinDiff = min(self.dx)**2/max(2.0*self.nu, self.nuTmax)
         dtMin = min(dtMinHydro, dtMinDiff)
 
         if self.comm.rank == 0:
@@ -396,31 +431,46 @@ class spectralLES(object):
                       .format(dtMinHydro, dtMinDiff))
         return dtMin
 
-    def RK4_integrate(self, dt):
+    def RK4_integrate(self, dt, *Source_terms):
         """
         4th order Runge-Kutta time integrator for spectralLES
+        Olga/Peter: I didn't really pay attention to the paper, is this
+                    4th order, or is it only 3rd?
 
         Arguments:
         ----------
-        computeRHS - function handle to a RHS calculator
-        dt         - current timestep
-        body_force - (Optional) a user-supplied body force transport term
-                     (Default: None)
+        dt            - current timestep
+        *Source_terms - (Optional) User-supplied source terms. This is a
+                        special Python syntax, basically any argument you
+                        feed RK4_integrate() after dt will be stored in the
+                        list Source_terms. If no arguments are given,
+                        Source_terms = [], and Python will accept the null
+                        list ([]) in it's for loops, in which case the
+                        loop region is skipped. This is equivalent to
+                        pre-bundling function handles into a list and then
+                        explicitly requiring a list as the second argument.
+        Note: The source terms Colin coded accept any number of extra arguments
+        and ignore them, that way if you need to pass a computeSource()
+        function an argument each call, those source terms are forwards
+        compatible with the change inside the Source loop.
         """
 
         a = [1./6., 1./3., 1./3., 1./6.]
-        b = [0.5, 0.5, 1., 0.]
+        b = [0.5, 0.5, 1.]
 
         self.U_hat1[:] = self.U_hat0[:] = self.U_hat
-        self.U[0] = irfft3(self.comm, self.U_hat[0])
-        self.U[1] = irfft3(self.comm, self.U_hat[1])
-        self.U[2] = irfft3(self.comm, self.U_hat[2])
 
         for rk in range(4):
-            self.computeAD()
-            self.computeSources()
+            self.U[0] = irfft3(self.comm, self.U_hat[0])
+            self.U[1] = irfft3(self.comm, self.U_hat[1])
+            self.U[2] = irfft3(self.comm, self.U_hat[2])
 
-            self.U_hat[:] = self.U_hat0 + b[rk]*dt*self.dU
+            self.computeAD()
+            for Source in Source_terms:
+                Source()
+
+            if rk < 3:
+                self.U_hat[:] = self.U_hat0 + b[rk]*dt*self.dU
             self.U_hat1[:] += a[rk]*dt*self.dU
 
         self.U_hat[:] = self.U_hat1

@@ -1,9 +1,9 @@
 from math import *
 
 WORKDIR='/Users/colin/workspace/scratch/'
-idir = WORKDIR+'spectralLES/HIT_DNS/test_K24_N64/'  # input folder
-odir = WORKDIR+'spectralLES/HIT_DNS/test_K24_N64/'  # input folder
-pid = 'test_K24_N64'                                # problem ID
+idir = WORKDIR+'spectralLES/HIT_LES/test_N64/'  # input folder
+odir = WORKDIR+'spectralLES/HIT_LES/test_N64/'  # input folder
+pid = 'test_LES_N64'                                # problem ID
 L = 2.*pi                                           # domain size
 N = 64                                              # linear grid size
 cfl = 0.45                                          # CFL no.
@@ -16,5 +16,5 @@ dt_spec = 0.1*tau                                   # spectrum output rate
 nu = 0.01                                           # kinematic viscosity
 eps_inj = 0.6                               # energy injection rate (cell avg.)
 Urms = 3.48                                 # initial rms velocity
-k_exp = -1.333                              # initial spectrum power law
-k_peak = 4                                  # initial spectrum decay scaling
+k_exp = -1.0                                # initial spectrum power law
+k_peak = 16                                 # initial spectrum decay scaling

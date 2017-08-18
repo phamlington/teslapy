@@ -94,7 +94,6 @@ def taylor_green_vortex():
 
     solver.Initialize_Taylor_Green_vortex()
     solver.computeAD = solver.computeAD_vorticity_formulation
-    solver.computeSources = solver.computeSources_None
 
     while t < tlimit-1.e-8:
         if tstep % 10 == 0:
