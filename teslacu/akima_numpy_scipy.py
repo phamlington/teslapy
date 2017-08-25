@@ -59,8 +59,8 @@ def deriv(phi, h, axis=0):
     tmp[:3] = phi[-3:]
     tmp[-3:] = phi[:3]
 
-    for j in xrange(s[-2]):
-        for i in xrange(s[-1]):
+    for j in range(s[-2]):
+        for i in range(s[-1]):
             spline = interp(x, tmp[..., j, i])
             phi2 = spline(xi)
             deriv[..., j, i] = (phi2[1:] - phi2[:-1])*(1.0/h)

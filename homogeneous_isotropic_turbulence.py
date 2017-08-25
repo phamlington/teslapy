@@ -53,6 +53,7 @@ import sys
 import getopt
 # import os
 import time
+from math import *
 comm = MPI.COMM_WORLD
 
 
@@ -70,8 +71,8 @@ def homogeneous_isotropic_turbulence(args):
 
     if N % comm.size > 0:
         if comm.rank == 0:
-            print ('Job started with improper number of MPI tasks for the '
-                   'size of the data specified!')
+            print('Job started with improper number of MPI tasks for the '
+                  'size of the data specified!')
         MPI.Finalize()
         sys.exit(1)
 
@@ -91,42 +92,137 @@ def homogeneous_isotropic_turbulence(args):
     emax = np.NINF
     analyzer.mpi_moments_file = '%s%s.moments' % (analyzer.odir, pid)
 
-    solver = spectralLES(comm, L, N, nu, eps_inj)
-
-    # currently performing DNS, which should be minimally aliased, but does
-    # need to be isotropic, therefore overwrite the dealias filter with
-    # an isotropic filter
+    solver = spectralLES(comm, L, N, nu, Gtype='spectral',
+                         les_scale=sqrt(2)*N/3.,
+                         test_scale=N//6, eps_inj=eps_inj)
+    # currently performing HIT, which by name must be isotropic, therefore
+    # overwrite the default dealias filter with an isotropic filter
     solver.dealias_filter = solver.les_filter
+    # solver.dealias_filter = solver.filter_kernel(N//2, 'spectral')
 
-    # force only lowest wavemodes with peak at 2 and non-zero roll-off in modes
-    # 1 and 3
-    solver.forcing_filter = solver.filter_kernel(4.0)      # low pass
-    solver.forcing_filter*= 1.0-solver.filter_kernel(2.0)  # high pass
+    # FILTER KERNEL FOR SPECTRALLY-TRUNCATED FORCING (random or linear)
+    # This formulation forces only low wavemodes, but not the 1st shell:
+    # - start with a low-pass filter
+    solver.forcing_filter = solver.filter_kernel(4.0, 'spectral')
+    # - multipy by high-pass filter to get a band-pass filter
+    solver.forcing_filter*= 1.0-solver.filter_kernel(2.0, 'spectral')
 
     # -------------------------------------------------------------------------
     # Initialize the simulation
-    solver.Initialize_random_HIT_spectrum(Urms, k_exp, k_peak)
-    # solver.Initialize_Taylor_Green_vortex()
 
-    dt = solver.new_dt_const_nu(cfl)
+    t_sim = t_rst = t_bin = t_hst = t_spec = t_drv = 0.0
+    tstep = irst = iout = 0
 
-    t_sim = 0.0
+    if dt_hst % dt_spec > 1.e-6*dt_spec:
+        # ensures that all analysis outputs are in sync (see below)
+        dt_hst -= dt_hst % dt_spec
     if dt_bin % dt_hst > 1.e-6*dt_hst:
         # ensures that Enstrophy is computed for binary output (see below)
         dt_bin -= dt_bin % dt_hst
-    t_rst = dt_rst
-    t_bin = dt_bin
-    t_hst = dt_hst
-    t_spec= dt_spec
-    tstep = 0
-    irst = 0
-    ibin = 0
-    ihst = 0
-    ispec= 0
 
-    # Output initial conditions for restarting and data analysis products
-    # for random IC
-    analyzer.spectral_density(solver.U_hat, '%3.3d_u' % ispec, 'velocity PSD',
+    # currently using a fixed random seed of comm.rank for testing
+    np.random.seed(comm.rank)  # sets random seed for all RNG functions
+    int_seeds = np.random.randint(1, 2147483648, size=(1e4,))
+    solver.Initialize_HIT_random_spectrum(Urms, k_exp, k_peak)
+    # solver.Initialize_Taylor_Green_vortex()
+
+    # Update the dynamic dt based on CFL constraint
+    dt = solver.new_dt_const_nu(cfl)
+
+    # -------------------------------------------------------------------------
+    # Run the simulation
+
+    solver.computeAD = solver.computeAD_vorticity_formulation
+
+    while t_sim < tlimit+1.e-8:
+
+        # output stdout/log messages every step if needed/wanted
+        # if comm.rank == 0:
+        #     pass
+
+        # output stdout/log messages every X steps if needed/wanted
+        if tstep % 10 == 0:
+            KE = 0.5*comm.allreduce(np.sum(np.square(solver.U)))*(1./N)**3
+            if comm.rank == 0:
+                print("time= {}\tdt = {}\tKE = {}".format(t_sim, dt, KE))
+
+        # Output snapshots and data analysis products
+        t_test = t_sim + 0.5*dt
+        if t_test >= t_spec:
+            analyzer.spectral_density(solver.U_hat, '%3.3d_u' % iout,
+                                      'velocity PSD', Ek_fmt('u_i'))
+            t_spec += dt_spec
+
+            if t_test >= t_hst:
+                solver.omga[2] = irfft3(comm,
+                                        1j*(solver.K[0]*solver.U_hat[1]
+                                            -solver.K[1]*solver.U_hat[0]))
+                solver.omga[1] = irfft3(comm,
+                                        1j*(solver.K[2]*solver.U_hat[0]
+                                            -solver.K[0]*solver.U_hat[2]))
+                solver.omga[0] = irfft3(comm,
+                                        1j*(solver.K[1]*solver.U_hat[2]
+                                            -solver.K[2]*solver.U_hat[1]))
+                enst = 0.5*np.sum(np.square(solver.omga), axis=0)
+
+                emin = min(emin, comm.allreduce(np.min(enst), op=MPI.MIN))
+                emax = max(emax, comm.allreduce(np.max(enst), op=MPI.MAX))
+
+                scalar_analysis(analyzer, enst, (emin, emax), None, None,
+                                '%3.3d_enst' % iout, 'enstrophy', '\Omega')
+
+                analyzer.spectral_density(solver.omga, '%3.3d_omga' % iout,
+                                          'vorticity PSD', Ek_fmt('\omega_i'))
+                t_hst += dt_hst
+
+                if t_test >= t_bin:
+                    writer.write_scalar('Enstrophy_%3.3d.bin' % iout, enst,
+                                        dtype=np.float32)
+                    t_bin += dt_bin
+
+            iout += 1
+
+        # Output restart files
+        if t_test >= t_rst:
+            writer.write_scalar('Velocity1_%3.3d.rst' % irst, solver.U[0],
+                                dtype=np.float64)
+            writer.write_scalar('Velocity2_%3.3d.rst' % irst, solver.U[1],
+                                dtype=np.float64)
+            writer.write_scalar('Velocity3_%3.3d.rst' % irst, solver.U[2],
+                                dtype=np.float64)
+            t_rst += dt_rst
+            irst += 1
+
+        # Update the random forcing pattern by generating a new random seed
+        # to be passed to the source functions
+        # if t_test >= t_drv:
+        #     # get the next random integer in the range [1, 2**31)
+        #     rseed = int_seeds[idrv]
+        #     # set the driving refresh rate dynamically
+        #     # driving should allow for 3 integral-velocity cell-crossing times
+        #     # according to Alexei
+        #     t_drv+= 3.0*self.dx.max()/sqrt(2*KE/3.)
+        #     idrv += 1
+
+        # Integrate the solution forward in time
+        # pass source functions without keyword
+        # pass arguments for source functions as keyword=value
+        solver.RK4_integrate(dt,
+                             solver.computeSource_HIT_linear_forcing,
+                             solver.computeSource_Smagorinksy_SGS)  # ,
+        #                     random_seed=rseed)
+
+        t_sim += dt
+        tstep += 1
+
+        # Update the dynamic dt based on CFL constraint
+        dt = solver.new_dt_const_nu(cfl)
+
+    # -------------------------------------------------------------------------
+    # Finalize the simulation
+
+    # Output restarting and data analysis files
+    analyzer.spectral_density(solver.U_hat, '%3.3d_u' % iout, 'velocity PSD',
                               Ek_fmt('u_i'))
 
     solver.omga[2] = irfft3(comm, 1j*(solver.K[0]*solver.U_hat[1]
@@ -137,13 +233,13 @@ def homogeneous_isotropic_turbulence(args):
                                       -solver.K[2]*solver.U_hat[1]))
     enst = 0.5*np.sum(np.square(solver.omga), axis=0)
 
-    writer.write_scalar('Enstrophy_%3.3d.bin' % ibin, enst, dtype=np.float32)
+    writer.write_scalar('Enstrophy_%3.3d.bin' % iout, enst, dtype=np.float32)
 
     emin = min(emin, comm.allreduce(np.min(enst), op=MPI.MIN))
     emax = max(emax, comm.allreduce(np.max(enst), op=MPI.MAX))
     scalar_analysis(analyzer, enst, (emin, emax), None, None,
-                    '%3.3d_enst' % ihst, 'enstrophy', '\Omega')
-    analyzer.spectral_density(solver.omga, '%3.3d_omga' % ispec,
+                    '%3.3d_enst' % iout, 'enstrophy', '\Omega')
+    analyzer.spectral_density(solver.omga, '%3.3d_omga' % iout,
                               'vorticity PSD', Ek_fmt('\omega_i'))
 
     writer.write_scalar('Velocity1_%3.3d.rst' % irst, solver.U[0],
@@ -152,72 +248,6 @@ def homogeneous_isotropic_turbulence(args):
                         dtype=np.float64)
     writer.write_scalar('Velocity3_%3.3d.rst' % irst, solver.U[2],
                         dtype=np.float64)
-
-    # -------------------------------------------------------------------------
-    # Run the simulation
-
-    solver.computeAD = solver.computeAD_vorticity_formulation
-
-    while t_sim < tlimit+1.e-8:
-        if tstep % 10 == 0:
-            k = comm.reduce(0.5*np.sum(np.square(solver.U))*(1./N)**3)
-            if comm.rank == 0:
-                print "KE = {}".format(k)
-
-        t_sim += dt
-        tstep += 1
-
-        # Integrate the solution forward in time
-        solver.RK4_integrate(dt,
-                             solver.computeSource_HIT_linear_forcing,
-                             solver.computeSource_Smagorinksy_SGS)
-
-        # Update the dynamic dt based on CFL constraint
-        dt = solver.new_dt_const_nu(cfl)
-
-        # Output snapshots and data analysis products
-        if t_sim + 0.5*dt >= t_spec:
-            analyzer.spectral_density(solver.U_hat, '%3.3d_u' % ispec,
-                                      'velocity PSD', Ek_fmt('u_i'))
-            t_spec += dt_spec
-            ispec += 1
-
-        if t_sim + 0.5*dt >= t_hst:
-
-            solver.omga[2] = irfft3(comm, 1j*(solver.K[0]*solver.U_hat[1]
-                                              -solver.K[1]*solver.U_hat[0]))
-            solver.omga[1] = irfft3(comm, 1j*(solver.K[2]*solver.U_hat[0]
-                                              -solver.K[0]*solver.U_hat[2]))
-            solver.omga[0] = irfft3(comm, 1j*(solver.K[1]*solver.U_hat[2]
-                                              -solver.K[2]*solver.U_hat[1]))
-            enst = 0.5*np.sum(np.square(solver.omga), axis=0)
-
-            emin = min(emin, comm.allreduce(np.min(enst), op=MPI.MIN))
-            emax = max(emax, comm.allreduce(np.max(enst), op=MPI.MAX))
-
-            scalar_analysis(analyzer, enst, (emin, emax), None, None,
-                            '%3.3d_enst' % ihst, 'enstrophy', '\Omega')
-
-            analyzer.spectral_density(solver.omga, '%3.3d_omga' % ispec,
-                                      'vorticity PSD', Ek_fmt('\omega_i'))
-            t_hst += dt_hst
-            ihst += 1
-
-            if t_sim + 0.5*dt >= t_bin:
-                writer.write_scalar('Enstrophy_%3.3d.bin' % ibin, enst,
-                                    dtype=np.float32)
-                t_bin += dt_bin
-                ibin += 1
-
-        if t_sim + 0.5*dt >= t_rst:
-            writer.write_scalar('Velocity1_%3.3d.rst' % irst, solver.U[0],
-                                dtype=np.float64)
-            writer.write_scalar('Velocity2_%3.3d.rst' % irst, solver.U[1],
-                                dtype=np.float64)
-            writer.write_scalar('Velocity3_%3.3d.rst' % irst, solver.U[2],
-                                dtype=np.float64)
-            t_rst += dt_rst
-            irst += 1
 
     return
 
@@ -278,14 +308,14 @@ def get_inputs():
                                     "k_exp=", "k_peak="])
     except getopt.GetoptError as e:
         if comm.rank == 0:
-            print e
-            print help_string
+            print(e)
+            print(help_string)
         MPI.Finalize()
         sys.exit(999)
     except Exception as e:
         if comm.rank == 0:
-            print ('Unknown exception while getting input arguments!')
-            print e
+            print('Unknown exception while getting input arguments!')
+            print(e)
         MPI.Finalize()
         try:
             sys.exit(e.errno)
@@ -296,83 +326,83 @@ def get_inputs():
         try:
             if opt=='-h':
                 if comm.rank == 0:
-                    print help_string
+                    print(help_string)
                 MPI.Finalize()
                 sys.exit(1)
             elif opt=='-i':
                 idir = arg
                 if comm.rank == 0:
-                    print 'input directory:\t'+idir
+                    print('input directory:\t'+idir)
             elif opt=='-o':
                 odir = arg
                 if comm.rank == 0:
-                    print 'output directory:\t'+odir
+                    print('output directory:\t'+odir)
             elif opt=='-p':
                 pid = arg
                 if comm.rank == 0:
-                    print 'problem ID:\t\t'+pid
+                    print('problem ID:\t\t'+pid)
             elif opt=='-L':
                 L = float(arg)
                 if comm.rank == 0:
-                    print 'L:\t\t\t{}'.format(L)
+                    print('L:\t\t\t{}'.format(L))
             elif opt=='-N':
                 N = int(arg)
                 if comm.rank == 0:
-                    print 'N:\t\t\t{}'.format(N)
+                    print('N:\t\t\t{}'.format(N))
             elif opt=='-c':
                 cfl = float(arg)
                 if comm.rank == 0:
-                    print 'CFL:\t\t\t{}'.format(cfl)
+                    print('CFL:\t\t\t{}'.format(cfl))
             elif opt=='--tlimit':
                 tlimit = float(arg)
                 if comm.rank == 0:
-                    print 'tlimit:\t\t\t{}'.format(tlimit)
+                    print('tlimit:\t\t\t{}'.format(tlimit))
             elif opt=='--dt_rst':
                 dt_rst = float(arg)
                 if comm.rank == 0:
-                    print 'dt_rst:\t\t\t{}'.format(dt_rst)
+                    print('dt_rst:\t\t\t{}'.format(dt_rst))
             elif opt=='--dt_bin':
                 dt_bin = float(arg)
                 if comm.rank == 0:
-                    print 'dt_bin:\t\t\t{}'.format(dt_bin)
+                    print('dt_bin:\t\t\t{}'.format(dt_bin))
             elif opt=='--dt_hst':
                 dt_hst = float(arg)
                 if comm.rank == 0:
-                    print 'dt_hst:\t\t\t{}'.format(dt_hst)
+                    print('dt_hst:\t\t\t{}'.format(dt_hst))
             elif opt=='--dt_spec':
                 dt_spec = float(arg)
                 if comm.rank == 0:
-                    print 'dt_spec:\t\t\t{}'.format(dt_spec)
+                    print('dt_spec:\t\t\t{}'.format(dt_spec))
             elif opt=='--nu':
                 nu = float(arg)
                 if comm.rank == 0:
-                    print 'nu:\t\t\t{}'.format(nu)
+                    print('nu:\t\t\t{}'.format(nu))
             elif opt=='--eps':
                 eps_inj = float(arg)
                 if comm.rank == 0:
-                    print 'eps_inj:\t\t\t{}'.format(eps_inj)
+                    print('eps_inj:\t\t\t{}'.format(eps_inj))
             elif opt=='--Uinit':
                 Urms = float(arg)
                 if comm.rank == 0:
-                    print 'Uinit:\t\t\t{}'.format(Urms)
+                    print('Uinit:\t\t\t{}'.format(Urms))
             elif opt=='--k_exp':
                 k_exp = float(arg)
                 if comm.rank == 0:
-                    print 'k_exp:\t\t\t{}'.format(k_exp)
+                    print('k_exp:\t\t\t{}'.format(k_exp))
             elif opt=='--k_peak':
                 k_peak = float(arg)
                 if comm.rank == 0:
-                    print 'k_peak:\t\t\t{}'.format(k_peak)
+                    print('k_peak:\t\t\t{}'.format(k_peak))
             else:
                 if comm.rank == 0:
-                    print help_string
+                    print(help_string)
                 MPI.Finalize()
                 sys.exit(1)
         except Exception as e:
             if comm.rank == 0:
-                print ('Unknown exception while reading argument {} '
-                       'from option {}!'.format(opt, arg))
-                print e
+                print('Unknown exception while reading argument {} '
+                      'from option {}!'.format(opt, arg))
+                print(e)
             MPI.Finalize()
             sys.exit(e.errno)
 

@@ -87,26 +87,35 @@ def rfft3(comm, u, fu=None):
     nz = nnz*ntasks
 
     if fu is None:
-        if u.dtype.itemsize == 8:
+        if u.itemsize == 8:
             fft_complex = np.complex128
-        elif u.dtype.itemsize == 4:
+        elif u.itemsize == 4:
             fft_complex = np.complex64
         else:
             raise AttributeError("cannot detect dataype of u")
-        fu = np.empty([nz, nny, nk], dtype=fft_complex)
+    else:
+        fft_complex = fu.dtype
 
-    temp = np.empty([nnz, ny, nk], dtype=fu.dtype)
+    temp1 = np.empty([nnz, ny, nk], dtype=fft_complex)
+    temp2 = np.empty([ntasks, nnz, nny, nk], dtype=fft_complex)
 
-    temp[:] = np.fft.rfft2(u, axes=(1, 2))
-    fu[:] = np.rollaxis(temp.reshape([nnz, ntasks, nny, nk]),
-                        1).reshape(fu.shape)
-    comm.Alltoall(MPI.IN_PLACE, fu)  # send, receive
-    fu[:] = np.fft.fft(fu, axis=0)
+    temp1[:] = np.fft.rfft2(u, axes=(1, 2))
+    temp2[:] = np.rollaxis(temp1.reshape([nnz, ntasks, nny, nk]), 1)
+    temp1.resize(temp2.shape)
+    comm.Alltoall(temp2, temp1)  # send, receive
+    temp1.resize([nz, nny, nk])
+    temp2.resize([nz, nny, nk])
+
+    if fu is None:
+        temp2[:] = np.fft.fft(temp1, axis=0)
+        fu = temp2  # reference copy not memory copy
+    else:
+        fu[:] = np.fft.fft(temp1, axis=0)
 
     return fu
 
 
-def irfft3(comm, fu):
+def irfft3(comm, fu, u=None):
     """
     compute MPI-distributed, complex-to-real 3D FFT.
     Input array must have only three dimensions (not curently checked)
@@ -125,7 +134,12 @@ def irfft3(comm, fu):
     comm.Alltoall(MPI.IN_PLACE, temp1)  # send, receive
     temp2[:] = np.rollaxis(temp1, 1).reshape([nnz, ny, nk])
 
-    return np.fft.irfft2(temp2, axes=(1, 2))
+    if u is None:
+        u = np.fft.irfft2(temp2, axes=(1, 2))
+    else:
+        u[:] = np.fft.irfft2(temp2, axes=(1, 2))
+
+    return u
 
 
 def shell_average(comm, E3, km):
@@ -147,7 +161,7 @@ def shell_average(comm, E3, km):
         # this mpi task has the DC mode, only works for 1D domain decomp
         E1[0] = E3[0, 0, 0]
 
-    for k in xrange(1, nk):
+    for k in range(1, nk):
         E1[k] = psum(np.where(km==k, E3, zeros))
 
     comm.Allreduce(MPI.IN_PLACE, E1, op=MPI.SUM)

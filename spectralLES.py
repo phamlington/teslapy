@@ -52,26 +52,27 @@ http://tesla.colorado.edu
 from mpi4py import MPI
 import numpy as np
 from math import *
-from teslacu.fft_mpi4py_numpy import *  # FFT transforms
+from teslacu.fft_mpi4py_numpy import *          # FFT transforms
+from teslacu.stats_mpi4py_numpy import *        # statistical functions
 
 world_comm = MPI.COMM_WORLD
 
 
-def psum(data):
-    """
-    input argument data can be any n-dimensional array-like object, including
-    a 0D scalar value or 1D array.
-    """
-    psum = np.asarray(data)
-    for n in range(data.ndim):
-        psum.sort(axis=-1)
-        psum = np.sum(psum, axis=-1)
-    return psum
+# def psum(data):
+#     """
+#     input argument data can be any n-dimensional array-like object, including
+#     a 0D scalar value or 1D array.
+#     """
+#     psum = np.asarray(data)
+#     for n in range(data.ndim):
+#         psum.sort(axis=-1)
+#         psum = np.sum(psum, axis=-1)
+#     return psum
 
 
 class spectralLES(object):
-    def __init__(self, comm, L, nx, nu, eps_inj=1.0, Gtype='spectral',
-                 les_scale=None, test_scale=None):
+    def __init__(self, comm, L, nx, nu, Gtype='spectral', les_scale=None,
+                 test_scale=None, eps_inj=None):
 
         self.comm = comm
 
@@ -144,14 +145,14 @@ class spectralLES(object):
         self.K = np.array(np.meshgrid(k3, k2, k1, indexing='ij'), dtype=int)
 
         self.Ksq = np.sum(np.square(self.K), axis=0)
-        kmag = np.sqrt(self.Ksq.astype(float))
+        # kmag = np.sqrt(self.Ksq.astype(float))
         self.K_Ksq = (self.K.astype(float)
                       /np.where(self.Ksq==0, 1, self.Ksq).astype(float))
 
         # standard dealias filter
         # this is neither isotropic nor strictly correct for 3D FFTs
         # can be replaced in the the calling program, of course.
-        kmax_dealias = 2./3.*(self.nx//2+1)
+        kmax_dealias = self.nx//3
         self.dealias_filter = np.array((np.abs(self.K[0]) < kmax_dealias[0])
                                        *(np.abs(self.K[1]) < kmax_dealias[1])
                                        *(np.abs(self.K[2]) < kmax_dealias[2]),
@@ -234,17 +235,20 @@ class spectralLES(object):
         elif Gtype == 'comp_exp':
             """
             A 'COMPact EXPonential' filter which:
-                1) has compact support in a ball of radius kf (1/kf)
+                1) has compact support in a ball of spectral (physical) radius
+                   kf (2/kf)
                 2) is strictly positive, and
                 3) is smooth (infinitely differentiable)
             in _both_ physical and spectral space!
             """
-            Hhat = np.exp(-k_kf**2/(0.25-k_kf**2))
-            Ghat[:] = np.where(k_kf <= 0.5, Hhat, 0.0).astype(dtype)
+            Ghat[:] = np.where(k_kf < 0.5,
+                               np.exp(-k_kf**2/(0.25-k_kf**2)),
+                               0.0).astype(dtype)
             G = irfft3(self.comm, Ghat)
-            G[:] = G**2
-            G /= self.comm.allreduce(psum(G), op=MPI.SUM)
+            G[:] = np.square(G)
             rfft3(self.comm, G, Ghat)
+            Ghat *= 1.0/self.comm.allreduce(Ghat[0, 0, 0], op=MPI.MAX)
+            Ghat -= 1j*np.imag(Ghat)
 
             # elif Gtype == 'inv_comp_exp':
             #     """
@@ -252,8 +256,8 @@ class spectralLES(object):
             #     kernels are swapped so that the physical-space kernel has
             #     only a central lobe of support.
             #     """
-            #     H = np.exp(-r_rf**2/(0.25-r_rf**2))
-            #     G = np.where(r_rf <= 0.5, H, 0.0)
+            #     H = np.exp(-r_rf**2/(1.0-r_rf**2))
+            #     G = np.where(r_rf < 1.0, H, 0.0)
             #     rfft3(self.comm, G, Ghat)
             #     Ghat[:] = Ghat**2
             #     G[:] = irfft3(self.comm, Ghat)
@@ -282,43 +286,144 @@ class spectralLES(object):
 
         return
 
-    def Initialize_random_HIT_spectrum(self, Urms, k_exp, k_peak):
+    def get_random_HIT_spectrum(self, k_exp, k_peak, rseed=None):
         """
-        Generates a random, incompressible, velocity initial condition with a
+        Generates a random, incompressible, velocity field with an unnormalized
         Gamie-Ostriker isotropic turbulence spectrum
         """
-
         # Give each wavevector component a random phase and random magnitude
         # where magnitude is normally-distributed with variance 1 and mean 0
         # This will give RMS magnitude of 1.0
-        q1 = np.random.rand(*self.U_hat.shape)   # standard uniform samples
-        q2 = np.random.randn(*self.U_hat.shape)  # standard normal samples
-        self.U_hat = q2*(np.cos(2*pi*q1)+1j*np.sin(2*pi*q1))
+        if type(rseed) is int and rseed > 0:
+            np.random.seed(rseed)
+
+        q1 = np.random.rand(*self.S_hat.shape)   # standard uniform samples
+        q2 = np.random.randn(*self.S_hat.shape)  # standard normal samples
+        self.S_hat[:] = q2*(np.cos(2*pi*q1)+1j*np.sin(2*pi*q1))
 
         # Solenoidally-project, U_hat*(1-ki*kj/k^2)
-        self.U_hat -= np.sum(self.U_hat*self.K_Ksq, axis=0)*self.K
+        self.S_hat -= np.sum(self.S_hat*self.K_Ksq, axis=0)*self.K
 
         # Rescale to give desired spectrum
+
         # - First ensure that the wavenumber magnitudes are isotropic
         A = self.L/self.L.min()  # domain size aspect ratios
         A.resize((3, 1, 1, 1))   # ensure proper array broadcasting
         kmag = np.sqrt(np.sum(np.square(self.K.astype(float)/A), axis=0))
-        # - Second, scale to Gamie-Ostriker spectrum with k_exp and k_peak
-        self.U_hat *= np.where(kmag==0.0, 0.0, np.power(kmag, k_exp-1.0))
-        self.U_hat *= np.exp(-kmag/k_peak)
-        # - Third, scale to Urms
-        U_hat_rms = psum(np.square(np.abs(self.U_hat)))
-        U_hat_rms = np.sqrt(self.comm.allreduce(U_hat_rms))/self.nk.prod()
-        self.U_hat *= self.dealias_filter*Urms/U_hat_rms
 
-        # Inverse transform to finish initial conditions
-        self.U[0] = irfft3(self.comm, self.U_hat[0])
-        self.U[1] = irfft3(self.comm, self.U_hat[1])
-        self.U[2] = irfft3(self.comm, self.U_hat[2])
+        # - Second, scale to Gamie-Ostriker spectrum with k_exp and k_peak
+        #   and do not excite modes smaller than dk along the shortest
+        #   dimension L (kmag < 1.0).
+        self.S_hat *= np.where(kmag<1.0, 0.0, np.power(kmag, k_exp-1.0))
+        self.S_hat *= self.dealias_filter*np.exp(-kmag/k_peak)
 
         return
 
-    def computeAD_vorticity_formulation(self):
+    def Initialize_HIT_random_spectrum(self, Urms, k_exp, k_peak, rseed=None):
+        """
+        Generates a random, incompressible, velocity initial condition with a
+        Gamie-Ostriker isotropic turbulence spectrum
+        """
+        self.get_random_HIT_spectrum(k_exp, k_peak, rseed)
+
+        # - Third, scale to Urms
+        self.U[0] = irfft3(self.comm, self.S_hat[0])
+        self.U[1] = irfft3(self.comm, self.S_hat[1])
+        self.U[2] = irfft3(self.comm, self.S_hat[2])
+
+        self.U *= Urms*sqrt(self.Nx/self.comm.allreduce(psum(self.U**2)))
+
+        # transform to finish initial conditions
+        rfft3(self.comm, self.U[0], self.U_hat[0])
+        rfft3(self.comm, self.U[1], self.U_hat[1])
+        rfft3(self.comm, self.U[2], self.U_hat[2])
+
+        return
+
+    def computeSource_HIT_random_forcing(solver, **kwargs):
+        """
+        Source function to be added to spectralLES solver instance
+        all **kwargs are ignored
+        """
+        rseed = kwargs['random_seed']
+        self.get_random_HIT_spectrum(-5./3., self.nk[-1], rseed)
+        self.S_hat *= self.forcing_filter
+
+        self.omga[0] = irfft3(self.comm, self.S_hat[0])
+        self.omga[1] = irfft3(self.comm, self.S_hat[1])
+        self.omga[2] = irfft3(self.comm, self.S_hat[2])
+        dvScale = self.forcing_rate/(self.comm.allreduce(
+                                     psum(self.omga*self.U))*self.dx.prod())
+        self.dU += dvScale*self.S_hat
+
+        # if self.comm.rank == 0:
+        #     print("dvScale = {}".format(dvScale))
+
+        return
+
+    def computeSource_HIT_linear_forcing(self, **kwargs):
+        """
+        Source function to be added to spectralLES solver instance
+        all **kwargs are ignored
+        """
+        # Update the HIT forcing function, use omga as vector memory
+        self.S_hat[:] = self.U_hat*self.forcing_filter
+        self.omga[0] = irfft3(self.comm, self.S_hat[0])
+        self.omga[1] = irfft3(self.comm, self.S_hat[1])
+        self.omga[2] = irfft3(self.comm, self.S_hat[2])
+        dvScale = self.forcing_rate/(self.comm.allreduce(
+                                     psum(self.omga*self.U))*self.dx.prod())
+        self.dU += dvScale*self.S_hat
+
+        # if self.comm.rank == 0:
+        #     print("dvScale = {}".format(dvScale))
+
+        return
+
+    def computeSource_Smagorinksy_SGS(self, **kwargs):
+        """
+        Standard Smagorinsky model (fixed C_s for now)
+        Note that self.A is the generic Tensor memory space, with the letter
+        S reserved for 'Source', as in self.S_hat.
+        all **kwargs are ignored for now, but you could pass in a user-defined
+        Cs here, or some other kinds of parameters.
+        """
+        for i in range(3):
+            for j in range(3):
+                self.A[j, i] = 0.5*irfft3(self.comm,
+                                          1j*(self.K[2-j]*self.U_hat[i]
+                                              +self.K[2-i]*self.U_hat[j]))
+
+        # compute SGS flux tensor, nuT = 2|S|(Cs*D)**2 uses omga as
+        # working memory
+        self.omga[0] = np.sqrt(2.0*np.sum(np.square(self.A), axis=(0, 1)))
+        self.omga[0]*= self.smag_coef  # self.omga[0] == 2*nu_T
+
+        # m1, c2, c3, c4, c5, c6, gmin, gmax = \
+        #     central_moments(self.comm, self.Nx, self.omga[0])
+        # if self.comm.rank == 0:
+        #     print("nu_T moments: mean = {}\tvar = {}\tmin = {}\tmax = {}"
+        #           .format(m1, c2, gmin, gmax))
+
+        self.nuTmax = self.comm.allreduce(np.max(self.omga[0]), op=MPI.MAX)
+
+        self.S_hat[:] = 0.0
+        for i in range(3):
+            for j in range(3):
+                self.S_hat[i]+= 1j*self.K[2-j]*rfft3(self.comm,
+                                                     self.A[j, i]*self.omga[0])
+
+        self.S_hat *= self.dealias_filter  # Dealias filter
+
+        self.dU += self.S_hat
+
+        # dS = self.comm.allreduce(psum(self.S_hat))
+        # if self.comm.rank == 0:
+        #     print("<S_hat> = {}".format(dS))
+
+        return
+
+    def computeAD_vorticity_formulation(self, **kwargs):
         """
         Computes right-hand-side (RHS) advection and diffusion (AD) terms of
         the incompressible Navier-Stokes equations using a
@@ -362,58 +467,6 @@ class spectralLES(object):
 
         return
 
-    def computeSource_HIT_linear_forcing(self, *args):
-        """
-        Sources functions to be added to spectralLES solver instance
-        all *args are ignored
-        """
-        # Update the HIT forcing function, use omga as vector memory
-        self.S_hat[:] = self.U_hat*self.forcing_filter
-        self.omga[0] = irfft3(self.comm, self.S_hat[0])
-        self.omga[1] = irfft3(self.comm, self.S_hat[1])
-        self.omga[2] = irfft3(self.comm, self.S_hat[2])
-        dvScale = self.forcing_rate/(self.comm.allreduce(
-                                     psum(self.omga*self.U))*self.dx.prod())
-        self.dU += dvScale*self.S_hat
-
-        # if self.comm.rank == 0:
-        #     print "dvScale = {}".format(dvScale)
-
-        return
-
-    def computeSource_Smagorinksy_SGS(self, *args):
-        """
-        Standard Smagorinsky model (fixed C_s for now)
-        Note that self.A is the generic Tensor memory space, with the letter
-        S reserved for 'Source', as in self.S_hat.
-        all *args are ignored for now, but you could pass in a user-defined
-        Cs here, or some other kinds of parameters.
-        """
-        for i in range(3):
-            for j in range(i, 3):
-                self.A[j, i] = 0.5*irfft3(self.comm,
-                                          1j*(self.K[2-j]*self.U_hat[i]
-                                              +self.K[2-i]*self.U_hat[j]))
-                if i != j:
-                    self.A[i, j] = self.A[j, i]
-        # compute SGS flux tensor, (Cs*D)**2 use omga as working memory
-        self.omga[0] = np.sqrt(2.0*np.sum(np.square(self.A), axis=(0, 1)))
-        self.omga[0]*= self.smag_coef  # self.omga[0] == 2*nu_T
-
-        self.nuTmax = self.comm.allreduce(np.max(self.omga[0]), op=MPI.MAX)
-
-        self.S_hat[:] = 0.0
-        for i in range(3):
-            for j in range(3):
-                self.S_hat[i]+= 1j*self.K[2-j]*rfft3(self.comm,
-                                                     self.A[j, i]*self.omga[0])
-
-        self.S_hat *= self.les_filter  # Dealias/explicit filter
-
-        self.dU += self.S_hat
-
-        return
-
     def new_dt_const_nu(self, cfl):
         u1m = u2m = u3m = 0.0
         u1m = self.comm.allreduce(np.max(self.U[0]), op=MPI.MAX)
@@ -421,21 +474,21 @@ class spectralLES(object):
         u3m = self.comm.allreduce(np.max(self.U[2]), op=MPI.MAX)
 
         dtMinHydro = cfl*min(self.dx[0]/u1m, self.dx[1]/u2m, self.dx[2]/u3m)
-        dtMinDiff = min(self.dx)**2/max(2.0*self.nu, self.nuTmax)
+        dtMinDiff = min(self.dx)**2/max(2.0*self.nu, self.nuTmax/cfl)
         dtMin = min(dtMinHydro, dtMinDiff)
 
         if self.comm.rank == 0:
-            print "dt = {}".format(dtMin)
             if dtMinDiff < dtMinHydro:
                 print("timestep limited by diffusion! {} {}"
                       .format(dtMinHydro, dtMinDiff))
+
         return dtMin
 
-    def RK4_integrate(self, dt, *Source_terms):
+    def RK4_integrate(self, dt, *Source_terms, **kwargs):
         """
-        4th order Runge-Kutta time integrator for spectralLES
+        Nth order Runge-Kutta time integrator for spectralLES
         Olga/Peter: I didn't really pay attention to the paper, is this
-                    4th order, or is it only 3rd?
+                    actually 4th order, or is it only 3rd order?
 
         Arguments:
         ----------
@@ -449,6 +502,7 @@ class spectralLES(object):
                         loop region is skipped. This is equivalent to
                         pre-bundling function handles into a list and then
                         explicitly requiring a list as the second argument.
+        **kwargs      - the keyword arguments to be passed to all Sources
         Note: The source terms Colin coded accept any number of extra arguments
         and ignore them, that way if you need to pass a computeSource()
         function an argument each call, those source terms are forwards
@@ -461,19 +515,18 @@ class spectralLES(object):
         self.U_hat1[:] = self.U_hat0[:] = self.U_hat
 
         for rk in range(4):
+
             self.U[0] = irfft3(self.comm, self.U_hat[0])
             self.U[1] = irfft3(self.comm, self.U_hat[1])
             self.U[2] = irfft3(self.comm, self.U_hat[2])
 
             self.computeAD()
             for Source in Source_terms:
-                Source()
+                Source(**kwargs)
 
             if rk < 3:
                 self.U_hat[:] = self.U_hat0 + b[rk]*dt*self.dU
             self.U_hat1[:] += a[rk]*dt*self.dU
-
-        self.U_hat[:] = self.U_hat1
 
         self.U[0] = irfft3(self.comm, self.U_hat[0])
         self.U[1] = irfft3(self.comm, self.U_hat[1])
