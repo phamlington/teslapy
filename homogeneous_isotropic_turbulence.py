@@ -45,15 +45,16 @@ http://tesla.colorado.edu
 
 from mpi4py import MPI
 import numpy as np
-from spectralLES import spectralLES
-from teslacu import mpiAnalyzer, mpiReader, mpiWriter
-from teslacu.fft_mpi4py_numpy import *  # FFT transforms
-from teslacu.analysis_functions import scalar_analysis
 import sys
 import getopt
 # import os
 import time
 from math import *
+from spectralLES import spectralLES
+from teslacu import mpiAnalyzer, mpiReader, mpiWriter
+from teslacu.fft_mpi4py_numpy import *  # FFT transforms
+from teslacu.analysis_functions import scalar_analysis
+
 comm = MPI.COMM_WORLD
 
 
@@ -122,7 +123,7 @@ def homogeneous_isotropic_turbulence(args):
 
     # currently using a fixed random seed of comm.rank for testing
     np.random.seed(comm.rank)  # sets random seed for all RNG functions
-    int_seeds = np.random.randint(1, 2147483648, size=(1e4,))
+    int_seeds = np.random.randint(1, 2147483648, size=(10000,))
     solver.Initialize_HIT_random_spectrum(Urms, k_exp, k_peak)
     # solver.Initialize_Taylor_Green_vortex()
 
@@ -144,7 +145,8 @@ def homogeneous_isotropic_turbulence(args):
         if tstep % 10 == 0:
             KE = 0.5*comm.allreduce(np.sum(np.square(solver.U)))*(1./N)**3
             if comm.rank == 0:
-                print("time= {}\tdt = {}\tKE = {}".format(t_sim, dt, KE))
+                print("time = %15.8e\tdt = %15.8e\tKE = %15.8e"
+                      % (t_sim, dt, KE))
 
         # Output snapshots and data analysis products
         t_test = t_sim + 0.5*dt
@@ -217,6 +219,8 @@ def homogeneous_isotropic_turbulence(args):
 
         # Update the dynamic dt based on CFL constraint
         dt = solver.new_dt_const_nu(cfl)
+
+        sys.stdout.flush()  # forces Python 3 to flush print statements
 
     # -------------------------------------------------------------------------
     # Finalize the simulation

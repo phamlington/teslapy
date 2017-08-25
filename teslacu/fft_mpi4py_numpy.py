@@ -58,9 +58,13 @@ University of Colorado Boulder
 http://tesla.colorado.edu
 
 """
-
 from mpi4py import MPI
 import numpy as np
+
+__all__ = ['psum', 'rfft3', 'irfft3', 'shell_average']
+
+# if __name__ == "__main__" and __package__ is None:
+#     __package__ = "teslacu.fft_mpi4py_numpy"
 
 
 def psum(data):
@@ -173,4 +177,4 @@ def fft3_unit_test(comm, u, fwdn, invn):
     fu = rfft3(comm, u)
     up = irfft3(comm, fu)
     check = u/up
-    print 'fft3 checksum:', check.min(), check.max(), check.sum()
+    print('fft3 checksum:', check.min(), check.max(), check.sum())

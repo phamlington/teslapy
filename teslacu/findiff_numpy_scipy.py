@@ -22,6 +22,8 @@ http://tesla.colorado.edu
 import numpy as np
 from scipy.linalg import circulant
 
+__all__ = ['central_matrix', 'central_deriv']
+
 
 def central_matrix(n, d=1, o=4, dtype=np.float64):
     '''

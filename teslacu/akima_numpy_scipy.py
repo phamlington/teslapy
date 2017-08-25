@@ -22,6 +22,8 @@ http://tesla.colorado.edu
 import numpy as np
 from scipy.interpolate import Akima1DInterpolator as interp
 
+__all__ = ["deriv"]
+
 
 def deriv(phi, h, axis=0):
     """

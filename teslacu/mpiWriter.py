@@ -48,6 +48,8 @@ import os
 # from vtk import vtkStructuredPointsReader
 # from vtk.util import numpy_support as vn
 
+__all__ = []
+
 
 def factory(comm=MPI.COMM_WORLD, odir='./', ndims=3, decomp=None,
             nx=None, nh=None, byteswap=False, ftype='binary'):
@@ -61,7 +63,7 @@ def factory(comm=MPI.COMM_WORLD, odir='./', ndims=3, decomp=None,
     Output:
     """
     if MPI.COMM_WORLD.rank == 0:
-        print 'mpiWriter.factory() not yet written!'
+        print('mpiWriter.factory() not yet written!')
     MPI.Finalize()
     sys.exit(1)
 # -----------------------------------------------------------------------------

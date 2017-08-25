@@ -36,7 +36,7 @@ import numpy as np
 # import mpiAnalyzer
 # import mpiReader
 # import mpiWriter
-from spectralLES import *
+from spectralLES import spectralLES
 from teslacu.fft_mpi4py_numpy import *  # FFT transforms
 import sys
 # from memory_profiler import profile

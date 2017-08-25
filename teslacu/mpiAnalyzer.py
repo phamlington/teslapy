@@ -56,11 +56,13 @@ import numpy as np
 from math import *
 import os
 import sys
-import fft_mpi4py_numpy as tcfft        # FFT transforms and math functions
-import stats_mpi4py_numpy as tcstats    # statistical functions
-import findiff_numpy_scipy as tcfd      # finite difference functions
-import akima_numpy_scipy as tcas        # Akima spline approximation functions
+from . import fft_mpi4py_numpy as tcfft        # FFT transforms and math functions
+from . import stats_mpi4py_numpy as tcstats    # statistical functions
+from . import findiff_numpy_scipy as tcfd      # finite difference functions
+from . import akima_numpy_scipy as tcas        # Akima spline approximation functions
 # from memory_profiler import profile
+
+__all__ = []
 
 world_comm = MPI.COMM_WORLD
 psum = tcstats.psum
@@ -376,7 +378,7 @@ class mpiBaseAnalyzer(object):
 
         nnz, ny, nx = var.shape
         nz = nnz*self.comm.size
-        nny = ny/self.comm.size
+        nny = ny//self.comm.size
 
         temp = np.empty([self.comm.size, nnz, nny, nx], dtype=var.dtype)
 
@@ -393,7 +395,7 @@ class mpiBaseAnalyzer(object):
         """
 
         nz, nny, nx = varT.shape
-        nnz = nz/self.comm.size
+        nnz = nz//self.comm.size
         ny = nny*self.comm.size
 
         temp = np.empty([self.comm.size, nnz, nny, nx], dtype=varT.dtype)
@@ -525,8 +527,8 @@ class hitAnalyzer(mpiBaseAnalyzer):
         Convenience function for MPI-distributed 3D r2c FFT of vector.
         """
         nnz, ny, nx = var.shape[1:]
-        nk = nx/2+1
-        nny = ny/self.comm.size
+        nk = nx//2+1
+        nny = ny//self.comm.size
         nz = nnz*self.comm.size
 
         if var.dtype.itemsize == 8:
@@ -550,7 +552,7 @@ class hitAnalyzer(mpiBaseAnalyzer):
         nz, nny, nk = fvar.shape[1:]
         nx = (nk-1)*2
         ny = nny*self.comm.size
-        nnz = nz/self.comm.size
+        nnz = nz//self.comm.size
 
         if fvar.dtype.itemsize == 16:
             fft_real = np.float64
