@@ -1,5 +1,5 @@
-<<<<<<< HEAD
-# spectralLES
-=======
-# teslapy
->>>>>>> a13542aed8676b3a228103ba8396d5005702d96f
+spectralLES Fourier spectral collocation solver class for performing computational fluid dynamics simulations.
+
+pre-beta release
+
+contact Colin for help
