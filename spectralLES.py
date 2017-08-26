@@ -149,24 +149,15 @@ class spectralLES(object):
         self.K_Ksq = (self.K.astype(float)
                       /np.where(self.Ksq==0, 1, self.Ksq).astype(float))
 
-        # standard dealias filter
-        # this is neither isotropic nor strictly correct for 3D FFTs
-        # can be replaced in the the calling program, of course.
-        kmax_dealias = self.nx//3
-        self.dealias_filter = np.array((np.abs(self.K[0]) < kmax_dealias[0])
-                                       *(np.abs(self.K[1]) < kmax_dealias[1])
-                                       *(np.abs(self.K[2]) < kmax_dealias[2]),
-                                       dtype=bool)
-
         if les_scale is None:
-            self.les_scale = kmax_dealias.min()
+            self.les_scale = floor(sqrt(2)*self.nx.min()/3.)
         else:
             self.les_scale = les_scale
 
         self.les_filter = self.filter_kernel(self.les_scale, Gtype)
 
         if test_scale is None:
-            self.test_scale = 0.5*kmax_dealias.min()
+            self.test_scale = floor(0.5*self.les_scale)
         else:
             self.test_scale = test_scale
 
@@ -492,7 +483,7 @@ class spectralLES(object):
         Arguments:
         ----------
         dt            - current timestep
-        *Source_terms - (Optional) User-supplied source terms. This is a
+        *Sources      - (Optional) User-supplied source terms. This is a
                         special Python syntax, basically any argument you
                         feed RK4_integrate() after dt will be stored in the
                         list Source_terms. If no arguments are given,
@@ -501,7 +492,8 @@ class spectralLES(object):
                         loop region is skipped. This is equivalent to
                         pre-bundling function handles into a list and then
                         explicitly requiring a list as the second argument.
-        **kwargs      - the keyword arguments to be passed to all Sources
+        **kwargs      - (Optional) the keyword arguments to be passed to all
+                        Sources.
         Note: The source terms Colin coded accept any number of extra arguments
         and ignore them, that way if you need to pass a computeSource()
         function an argument each call, those source terms are forwards
@@ -523,11 +515,11 @@ class spectralLES(object):
             for Source in Sources:
                 Source(**kwargs)
 
-            # Dealias/filter the nonlinear and pseudospectral terms
+            # Filter the nonlinear contributions to the RHS
             self.dU *= self.les_filter
 
             # Apply the Leray-Hopf projection operator (1 - Helmholtz operator)
-            # to dealiased pseudospectral terms in order to enforce the
+            # to filtered nonlinear contributions in order to enforce the
             # divergence-free continuity condition.
             # This operation is equivalent to computing the pressure field
             # using a physical-space pressure-Poisson solver and then adding

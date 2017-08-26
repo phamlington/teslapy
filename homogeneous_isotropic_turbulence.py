@@ -93,15 +93,8 @@ def homogeneous_isotropic_turbulence(args):
     emax = np.NINF
     analyzer.mpi_moments_file = '%s%s.moments' % (analyzer.odir, pid)
 
-    # CONFIGURE SOLVER
-    solver = spectralLES(comm, L, N, nu, Gtype='spectral',
-                         les_scale=sqrt(2)*N/3.,
-                         test_scale=N//6, eps_inj=eps_inj)
-
-    # - currently performing HIT, which by name must be isotropic, therefore
-    # - overwrite the default dealias filter with an isotropic filter
-    solver.dealias_filter = solver.les_filter
-    # solver.dealias_filter = solver.filter_kernel(N//2, 'spectral')
+    # CONFIGURE SOLVER - use default Gtype, les_scale, and test_scale
+    solver = spectralLES(comm, L, N, nu, eps_inj=eps_inj)
 
     # - create filter kernel for spectrally-truncated forcing
     # -- start with a low-pass filter
@@ -111,14 +104,17 @@ def homogeneous_isotropic_turbulence(args):
 
     # - finish configuring solver with RHS terms
     solver.computeAD = solver.computeAD_vorticity_formulation
-    Sources = [solver.computeSource_HIT_linear_forcing, ]
+    Sources = [solver.computeSource_HIT_linear_forcing,
+               solver.computeSource_Smagorinksy_SGS]
     kwargs = {}
 
     # -------------------------------------------------------------------------
     # Initialize the simulation
 
-    t_sim = t_rst = t_bin = t_hst = t_spec = t_drv = 0.0
-    tstep = irst = iout = idrv = 0
+    t_sim = t_rst = t_bin = t_hst = t_spec = 0.0
+    # t_drv = 0
+    tstep = irst = iout = 0
+    # idrv = 0
 
     if dt_hst % dt_spec > 1.e-6*dt_spec:
         # ensures that all analysis outputs are in sync (see below)
@@ -140,17 +136,6 @@ def homogeneous_isotropic_turbulence(args):
     # Run the simulation
 
     while t_sim < tlimit+1.e-8:
-
-        # keep SGS turned off until turbulence is developed
-        if t_sim < 2*pi and t_sim+dt > 2*pi:
-            Sources.append(solver.computeSource_Smagorinksy_SGS)
-            if comm.rank == 0:
-                print("--------------------------------------------"
-                      "------------------------")
-                print("---- Smagorinksy SGS source term activated, "
-                      "forcing remains active ----")
-                print("--------------------------------------------"
-                      "------------------------")
 
         # output stdout/log messages every step if needed/wanted
         KE = 0.5*comm.allreduce(np.sum(np.square(solver.U)))*(1./N)**3
