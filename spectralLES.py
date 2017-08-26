@@ -175,9 +175,9 @@ class spectralLES(object):
         self.forcing_filter = np.ones_like(self.test_filter)
         self.forcing_rate = eps_inj
 
-        # Ck = 1.6
-        # Cs = sqrt((pi**-2)*((3*Ck)**-1.5))  # == 0.098...
-        Cs = 0.2
+        Ck = 1.6
+        Cs = sqrt((pi**-2)*((3*Ck)**-1.5))  # == 0.098...
+        # Cs = 0.2
         # so long as K, kmag, scales, etc. are integer, need to dimensionalize
         D = self.L.min()/self.les_scale
         self.smag_coef = 2.0*(Cs*D)**2
@@ -291,18 +291,15 @@ class spectralLES(object):
         Generates a random, incompressible, velocity field with an unnormalized
         Gamie-Ostriker isotropic turbulence spectrum
         """
-        # Give each wavevector component a random phase and random magnitude
-        # where magnitude is normally-distributed with variance 1 and mean 0
-        # This will give RMS magnitude of 1.0
         if type(rseed) is int and rseed > 0:
             np.random.seed(rseed)
 
+        # Give each wavevector component a random phase and random magnitude
+        # where magnitude is normally-distributed with variance 1 and mean 0
+        # This will give RMS magnitude of 1.0
         q1 = np.random.rand(*self.S_hat.shape)   # standard uniform samples
         q2 = np.random.randn(*self.S_hat.shape)  # standard normal samples
         self.S_hat[:] = q2*(np.cos(2*pi*q1)+1j*np.sin(2*pi*q1))
-
-        # Solenoidally-project, U_hat*(1-ki*kj/k^2)
-        self.S_hat -= np.sum(self.S_hat*self.K_Ksq, axis=0)*self.K
 
         # Rescale to give desired spectrum
 
@@ -326,6 +323,9 @@ class spectralLES(object):
         """
         self.get_random_HIT_spectrum(k_exp, k_peak, rseed)
 
+        # Solenoidally-project, U_hat*(1-ki*kj/k^2)
+        self.S_hat -= np.sum(self.S_hat*self.K_Ksq, axis=0)*self.K
+
         # - Third, scale to Urms
         self.U[0] = irfft3(self.comm, self.S_hat[0])
         self.U[1] = irfft3(self.comm, self.S_hat[1])
@@ -340,7 +340,7 @@ class spectralLES(object):
 
         return
 
-    def computeSource_HIT_random_forcing(solver, **kwargs):
+    def computeSource_HIT_random_forcing(self, **kwargs):
         """
         Source function to be added to spectralLES solver instance
         all **kwargs are ignored
@@ -373,10 +373,18 @@ class spectralLES(object):
         self.omga[2] = irfft3(self.comm, self.S_hat[2])
         dvScale = self.forcing_rate/(self.comm.allreduce(
                                      psum(self.omga*self.U))*self.dx.prod())
-        self.dU += dvScale*self.S_hat
+        self.S_hat *= dvScale
+        self.dU += self.S_hat
 
+        # self.omga[0] = irfft3(self.comm, self.S_hat[0])
+        # self.omga[1] = irfft3(self.comm, self.S_hat[1])
+        # self.omga[2] = irfft3(self.comm, self.S_hat[2])
+        # eps_inj = 0.5*psum(self.S_hat*np.conj(self.U_hat)
+        #                    +np.conj(self.S_hat)*self.U_hat)
+        # eps_inj = self.comm.allreduce(eps_inj)
+        # eps_ratio = eps_inj/self.forcing_rate
         # if self.comm.rank == 0:
-        #     print("dvScale = {}".format(dvScale))
+        #     print("---- inj_ratio = %15.8f ----" % eps_ratio)
 
         return
 
@@ -402,8 +410,8 @@ class spectralLES(object):
         # m1, c2, c3, c4, c5, c6, gmin, gmax = \
         #     central_moments(self.comm, self.Nx, self.omga[0])
         # if self.comm.rank == 0:
-        #     print("nu_T moments: mean = {}\tvar = {}\tmin = {}\tmax = {}"
-        #           .format(m1, c2, gmin, gmax))
+        #     print("---- nu_T moments: mean = %8.4f\tvar = %8.4f\t"
+        #           "min = %8.4f\tmax = %8.4f" % (m1, c2, gmin, gmax))
 
         self.nuTmax = self.comm.allreduce(np.max(self.omga[0]), op=MPI.MAX)
 
@@ -412,14 +420,16 @@ class spectralLES(object):
             for j in range(3):
                 self.S_hat[i]+= 1j*self.K[2-j]*rfft3(self.comm,
                                                      self.A[j, i]*self.omga[0])
-
-        self.S_hat *= self.dealias_filter  # Dealias filter
-
         self.dU += self.S_hat
 
-        # dS = self.comm.allreduce(psum(self.S_hat))
+        # self.omga[0] = irfft3(self.comm, self.S_hat[0])
+        # self.omga[1] = irfft3(self.comm, self.S_hat[1])
+        # self.omga[2] = irfft3(self.comm, self.S_hat[2])
+
+        # eps_ratio = self.forcing_rate/(self.comm.allreduce(
+        #                                psum(self.omga*self.U))*self.dx.prod())
         # if self.comm.rank == 0:
-        #     print("<S_hat> = {}".format(dS))
+        #     print("---- SGS_ratio = %15.8f ----" % eps_ratio)
 
         return
 
@@ -450,17 +460,6 @@ class spectralLES(object):
         rfft3(self.comm, self.U[0]*self.omga[1]-self.U[1]*self.omga[0],
               self.dU[2])
 
-        # Dealias the pseudospectral convective transport term
-        self.dU *= self.dealias_filter
-
-        # Apply the Leray-Hopf projection operator (1 - Helmholtz projection
-        # operator) to dealiased/filtered pseudospectral cross-product term
-        # to enforce divergence-free continuity condition.
-        # This operation is equivalent to computing the pressure field using
-        # a physical-space pressure-Poisson solver and then adding the
-        # pressure-gradient transport term to the RHS.
-        self.dU -= np.sum(self.dU*self.K_Ksq, axis=0)*self.K
-
         # Compute the diffusive transport term and add to the LH-projected
         # convective transport term
         self.dU -= self.nu*self.Ksq*self.U_hat
@@ -484,7 +483,7 @@ class spectralLES(object):
 
         return dtMin
 
-    def RK4_integrate(self, dt, *Source_terms, **kwargs):
+    def RK4_integrate(self, dt, *Sources, **kwargs):
         """
         Nth order Runge-Kutta time integrator for spectralLES
         Olga/Peter: I didn't really pay attention to the paper, is this
@@ -521,8 +520,19 @@ class spectralLES(object):
             self.U[2] = irfft3(self.comm, self.U_hat[2])
 
             self.computeAD()
-            for Source in Source_terms:
+            for Source in Sources:
                 Source(**kwargs)
+
+            # Dealias/filter the nonlinear and pseudospectral terms
+            self.dU *= self.les_filter
+
+            # Apply the Leray-Hopf projection operator (1 - Helmholtz operator)
+            # to dealiased pseudospectral terms in order to enforce the
+            # divergence-free continuity condition.
+            # This operation is equivalent to computing the pressure field
+            # using a physical-space pressure-Poisson solver and then adding
+            # the pressure-gradient transport term to the RHS.
+            self.dU -= np.sum(self.dU*self.K_Ksq, axis=0)*self.K
 
             if rk < 3:
                 self.U_hat[:] = self.U_hat0 + b[rk]*dt*self.dU

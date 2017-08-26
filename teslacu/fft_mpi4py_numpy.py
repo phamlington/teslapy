@@ -91,30 +91,15 @@ def rfft3(comm, u, fu=None):
     nz = nnz*ntasks
 
     if fu is None:
-        if u.itemsize == 8:
-            fft_complex = np.complex128
-        elif u.itemsize == 4:
-            fft_complex = np.complex64
-        else:
-            raise AttributeError("cannot detect dataype of u")
-    else:
-        fft_complex = fu.dtype
+        fu = np.empty([nz, nny, nk], dtype=np.complex128)
 
-    temp1 = np.empty([nnz, ny, nk], dtype=fft_complex)
-    temp2 = np.empty([ntasks, nnz, nny, nk], dtype=fft_complex)
+    temp1 = np.empty([nnz, ny, nk], dtype=np.complex128)
 
     temp1[:] = np.fft.rfft2(u, axes=(1, 2))
-    temp2[:] = np.rollaxis(temp1.reshape([nnz, ntasks, nny, nk]), 1)
-    temp1.resize(temp2.shape)
-    comm.Alltoall(temp2, temp1)  # send, receive
-    temp1.resize([nz, nny, nk])
-    temp2.resize([nz, nny, nk])
-
-    if fu is None:
-        temp2[:] = np.fft.fft(temp1, axis=0)
-        fu = temp2  # reference copy not memory copy
-    else:
-        fu[:] = np.fft.fft(temp1, axis=0)
+    fu[:] = np.rollaxis(temp1.reshape([nnz, ntasks, nny, nk]),
+                        1).reshape(fu.shape)
+    comm.Alltoall(MPI.IN_PLACE, [fu, MPI.DOUBLE_COMPLEX])  # send, receive
+    fu[:] = np.fft.fft(fu, axis=0)
 
     return fu
 
@@ -135,7 +120,7 @@ def irfft3(comm, fu, u=None):
 
     temp1[:] = np.fft.ifft(fu, axis=0)
     temp1.resize([ntasks, nnz, nny, nk])
-    comm.Alltoall(MPI.IN_PLACE, temp1)  # send, receive
+    comm.Alltoall(MPI.IN_PLACE, [temp1, MPI.DOUBLE_COMPLEX])  # send, receive
     temp2[:] = np.rollaxis(temp1, 1).reshape([nnz, ny, nk])
 
     if u is None:

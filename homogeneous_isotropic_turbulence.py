@@ -78,7 +78,7 @@ def homogeneous_isotropic_turbulence(args):
         sys.exit(1)
 
     # -------------------------------------------------------------------------
-    # Generate a spectralLES solver, data writer, and data analyzer with the
+    # Configure a spectralLES solver, data writer, and data analyzer with the
     # appropriate class factories, MPI communicators, and paramters.
     # In the future a data plotter object could also be generated here!
 
@@ -93,26 +93,32 @@ def homogeneous_isotropic_turbulence(args):
     emax = np.NINF
     analyzer.mpi_moments_file = '%s%s.moments' % (analyzer.odir, pid)
 
+    # CONFIGURE SOLVER
     solver = spectralLES(comm, L, N, nu, Gtype='spectral',
                          les_scale=sqrt(2)*N/3.,
                          test_scale=N//6, eps_inj=eps_inj)
-    # currently performing HIT, which by name must be isotropic, therefore
-    # overwrite the default dealias filter with an isotropic filter
+
+    # - currently performing HIT, which by name must be isotropic, therefore
+    # - overwrite the default dealias filter with an isotropic filter
     solver.dealias_filter = solver.les_filter
     # solver.dealias_filter = solver.filter_kernel(N//2, 'spectral')
 
-    # FILTER KERNEL FOR SPECTRALLY-TRUNCATED FORCING (random or linear)
-    # This formulation forces only low wavemodes, but not the 1st shell:
-    # - start with a low-pass filter
+    # - create filter kernel for spectrally-truncated forcing
+    # -- start with a low-pass filter
     solver.forcing_filter = solver.filter_kernel(4.0, 'spectral')
-    # - multipy by high-pass filter to get a band-pass filter
+    # -- multipy by high-pass filter to get a band-pass filter
     solver.forcing_filter*= 1.0-solver.filter_kernel(2.0, 'spectral')
+
+    # - finish configuring solver with RHS terms
+    solver.computeAD = solver.computeAD_vorticity_formulation
+    Sources = [solver.computeSource_HIT_linear_forcing, ]
+    kwargs = {}
 
     # -------------------------------------------------------------------------
     # Initialize the simulation
 
     t_sim = t_rst = t_bin = t_hst = t_spec = t_drv = 0.0
-    tstep = irst = iout = 0
+    tstep = irst = iout = idrv = 0
 
     if dt_hst % dt_spec > 1.e-6*dt_spec:
         # ensures that all analysis outputs are in sync (see below)
@@ -123,7 +129,7 @@ def homogeneous_isotropic_turbulence(args):
 
     # currently using a fixed random seed of comm.rank for testing
     np.random.seed(comm.rank)  # sets random seed for all RNG functions
-    int_seeds = np.random.randint(1, 2147483648, size=(10000,))
+    # int_seeds = np.random.randint(1, 2147483648, size=(10000,), dtype=int)
     solver.Initialize_HIT_random_spectrum(Urms, k_exp, k_peak)
     # solver.Initialize_Taylor_Green_vortex()
 
@@ -133,20 +139,24 @@ def homogeneous_isotropic_turbulence(args):
     # -------------------------------------------------------------------------
     # Run the simulation
 
-    solver.computeAD = solver.computeAD_vorticity_formulation
-
     while t_sim < tlimit+1.e-8:
 
-        # output stdout/log messages every step if needed/wanted
-        # if comm.rank == 0:
-        #     pass
-
-        # output stdout/log messages every X steps if needed/wanted
-        if tstep % 10 == 0:
-            KE = 0.5*comm.allreduce(np.sum(np.square(solver.U)))*(1./N)**3
+        # keep SGS turned off until turbulence is developed
+        if t_sim < 2*pi and t_sim+dt > 2*pi:
+            Sources.append(solver.computeSource_Smagorinksy_SGS)
             if comm.rank == 0:
-                print("time = %15.8e\tdt = %15.8e\tKE = %15.8e"
-                      % (t_sim, dt, KE))
+                print("--------------------------------------------"
+                      "------------------------")
+                print("---- Smagorinksy SGS source term activated, "
+                      "forcing remains active ----")
+                print("--------------------------------------------"
+                      "------------------------")
+
+        # output stdout/log messages every step if needed/wanted
+        KE = 0.5*comm.allreduce(np.sum(np.square(solver.U)))*(1./N)**3
+        if comm.rank == 0:
+            print("time = %15.8e\tdt = %15.8e\tKE = %15.8e"
+                  % (t_sim, dt, KE))
 
         # Output snapshots and data analysis products
         t_test = t_sim + 0.5*dt
@@ -199,20 +209,17 @@ def homogeneous_isotropic_turbulence(args):
         # to be passed to the source functions
         # if t_test >= t_drv:
         #     # get the next random integer in the range [1, 2**31)
-        #     rseed = int_seeds[idrv]
+        #     rseed = int(int_seeds[idrv])  # convert to basic Python int type
         #     # set the driving refresh rate dynamically
         #     # driving should allow for 3 integral-velocity cell-crossing times
         #     # according to Alexei
-        #     t_drv+= 3.0*self.dx.max()/sqrt(2*KE/3.)
+        #     t_drv+= 3.0*solver.dx.max()/sqrt(2*KE/3.)
         #     idrv += 1
+        #     if comm.rank == 0:
+        #         print("---- updated random seed ----")
 
         # Integrate the solution forward in time
-        # pass source functions without keyword
-        # pass arguments for source functions as keyword=value
-        solver.RK4_integrate(dt,
-                             solver.computeSource_HIT_linear_forcing,
-                             solver.computeSource_Smagorinksy_SGS)  # ,
-        #                     random_seed=rseed)
+        solver.RK4_integrate(dt, *Sources, **kwargs)
 
         t_sim += dt
         tstep += 1
