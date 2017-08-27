@@ -303,7 +303,7 @@ class spectralLES(object):
         #   and do not excite modes smaller than dk along the shortest
         #   dimension L (kmag < 1.0).
         self.S_hat *= np.where(kmag<1.0, 0.0, np.power(kmag, k_exp-1.0))
-        self.S_hat *= self.dealias_filter*np.exp(-kmag/k_peak)
+        self.S_hat *= self.les_filter*np.exp(-kmag/k_peak)
 
         return
 
