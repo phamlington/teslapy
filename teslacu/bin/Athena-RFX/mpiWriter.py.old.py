@@ -1,7 +1,7 @@
 """
 Description:
 ============
-This module contains the mpiReader object classes for the TESLaCU package.
+This module contains the mpiWriter object classes for the TESLaCU package.
 It should not be imported unless "__main__" has been executed with MPI.
 
 Notes:
@@ -43,52 +43,44 @@ http://tesla.colorado.edu
 
 from mpi4py import MPI
 import numpy as np
+import sys
 # from vtk import vtkStructuredPointsReader
 # from vtk.util import numpy_support as vn
 
-__all__ = ['mpiReader']
 
-
-def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', ndims=3,
-              decomp=None, nx=None, nh=None, periodic=None, byteswap=True):
+def factory(mpi_comm=MPI.COMM_WORLD, odir='./', ndims=3, decomp=None,
+            fnx=None, anx=None, nh=None, periodic=None, ftype='binary'):
     """
-    The mpiReader() function is a "class factory" which returns the
-    appropriate mpi-parallel reader class instance based upon the
+    The factory() function is a "class factory" which returns the
+    appropriate mpi-parallel writer class instance based upon the
     inputs. Each subclass contains a different ...
 
     Arguments:
 
     Output:
     """
-
-    if ftype == 'binary':
-        newReader = mpiBinaryReader(comm, idir, ndims, decomp, nx, nh,
-                                    periodic, byteswap)
-    else:
-        newReader = mpiBinaryReader(comm, idir, ndims, decomp, nx, nh,
-                                    periodic, byteswap)
-
-    return newReader
+    if MPI.COMM_WORLD.rank == 0:
+        print 'mpiReader.factory() not yet written!'
+    MPI.Finalize()
+    sys.exit(1)
 # -----------------------------------------------------------------------------
 
 
-class mpiBinaryReader(object):
+class mpiBinaryWriter(object):
     """
-    class mpiBinaryReader
-
-    Development notes:
-        - this thing is pretty much not developed at all.
     """
 
-    def __init__(self, comm=MPI.COMM_WORLD, idir='./', ndims=3,
+    def __init__(self, mpi_comm=MPI.COMM_WORLD, odir='./', ndims=3,
                  decomp=None, nx=None, nh=None, periodic=None, byteswap=True):
 
             # DEFINE THE INSTANCE VARIABLES
 
             # "Protected" variables masked by property method
             #  Global variables
-            self.__idir = idir
-            self.__comm = comm
+            self.__odir = odir
+            self.__comm = mpi_comm
+            self.__taskid = mpi_comm.Get_rank()
+            self.__ntasks = mpi_comm.Get_size()
             self.__ndims = ndims
             self.__byteswap = byteswap
 
@@ -184,104 +176,20 @@ class mpiBinaryReader(object):
     def byteswap(self):
         return self.__byteswap
 
-    def simulation_time(self, filename):
-        if self.taskid==0:
-            with open(self.__idir+filename) as fh:
-                t = float(fh.readline())
-        else:
-            t = None
-
-        t = self.comm.bcast(t, root=0)
-
-        return t
-
-    def read_variable(self, filename, dtype=np.float64):
+    def set_variable(self, filename, data, dtype=np.float32):
         """Currently hard coded to 1D domain decomposition."""
         status = MPI.Status()
-        stmp = np.zeros(self.nnx, dtype=np.float32)
-        fpath = self.__idir+filename
-        fhandle = MPI.File.Open(self.comm, fpath)
+        if self.byteswap:
+            stmp = data.byteswap(True).astype(dtype)
+        else:
+            stmp = data.astype(dtype)
+
+        fpath = self.__odir+filename
+        fhandle = MPI.File.Open(self.comm, fpath, MPI.MODE_WRONLY|MPI.MODE_CREATE)
         offset = self.taskid*stmp.nbytes
-        fhandle.Read_at_all(offset, stmp, status)
+        fhandle.Write_at_all(offset, stmp, status)
         fhandle.Close()
 
-        if self.byteswap:
-            var = stmp.byteswap(True).astype(dtype)
-        else:
-            var = stmp.astype(dtype)
-        return var
-
-    def read_variable_ghost_cells(self, filename, dtype=np.float64):
-        """Currently hard coded to 1D domain decomposition."""
-        status = MPI.Status()
-        shape = np.array([self.nh[0]*2, self.nnx[1], self.nnx[2]])
-        stmp = np.zeros(shape, dtype=np.float32)
-        hsize = shape.prod()*2     # 1/2 of stmp size * 4 bytes
-        dsize = self.nnx.prod()*4  # subdomain size * 4 bytes
-
-        fpath = self.__idir+filename
-        fhandle = MPI.File.Open(self.comm, fpath)
-
-        # read in the -z ghost zones
-        if self.taskid==0:
-            idx = self.ntasks
-        else:
-            idx = self.taskid
-        offset = dsize*idx - hsize
-        fhandle.Read_at_all(offset, stmp[:self.nh[0], ...], status)
-
-        # read in the +z ghost zones
-        if self.taskid==self.ntasks-1:
-            idx = 0
-        else:
-            idx = self.taskid+1
-        offset = dsize*idx
-        fhandle.Read_at_all(offset, stmp[self.nh[0]:, ...], status)
-
-        fhandle.Close()
-
-        if self.byteswap:
-            var = stmp.byteswap(True).astype(dtype)
-        else:
-            var = stmp.astype(dtype)
-        return var
-
+        return status
 
 ###############################################################################
-# class mpiVtkReader(object):
-    """
-    reader = vtkStructuredPointsReader()
-    reader.SetFileName(filename)
-    reader.ReadAllVectorsOn()
-    reader.ReadAllScalarsOn()
-    reader.Update()
-
-    data = reader.GetOutput()
-
-    dim = data.GetDimensions()
-    vec = list(dim)
-    vec = [i-1 for i in dim]
-    vec.append(3)
-
-    u    = vn.vtk_to_numpy(data.GetCellData().GetArray('velocity'))
-    rho  = vn.vtk_to_numpy(data.GetCellData().GetArray('density'))
-    Etot = vn.vtk_to_numpy(data.GetCellData().GetArray('total_energy'))
-    Y    = vn.vtk_to_numpy(data.GetCellData().GetArray('scalar'))
-    byte_mask = vn.vtk_to_numpy(data.GetCellData().GetArray('avtGhostZones'))
-
-    x = zeros(data.GetNumberOfPoints())
-    y = zeros(data.GetNumberOfPoints())
-    z = zeros(data.GetNumberOfPoints())
-
-    for i in range(data.GetNumberOfPoints()):
-        x[i],y[i],z[i] = data.GetPoint(i)
-
-    u    = u.reshape(vec,order='F')
-    rho  = rho.reshape(dim,order='F')
-    Etot = Etot.reshape(dim,order='F')
-    Y    = Y.reshape(dim,order='F')
-    x    = x.reshape(dim,order='F')
-    y    = y.reshape(dim,order='F')
-    z    = z.reshape(dim,order='F')
-    byte_mask = byte_mask.reshape(dim,order='F')
-    """

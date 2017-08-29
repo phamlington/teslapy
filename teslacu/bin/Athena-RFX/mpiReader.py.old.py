@@ -43,16 +43,15 @@ http://tesla.colorado.edu
 
 from mpi4py import MPI
 import numpy as np
+import sys
 # from vtk import vtkStructuredPointsReader
 # from vtk.util import numpy_support as vn
 
-__all__ = ['mpiReader']
 
-
-def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', ndims=3,
-              decomp=None, nx=None, nh=None, periodic=None, byteswap=True):
+def factory(mpi_comm=MPI.COMM_WORLD, idir='./', ndims=3, decomp=None,
+            fnx=None, anx=None, nh=None, periodic=None, ftype='binary'):
     """
-    The mpiReader() function is a "class factory" which returns the
+    The factory() function is a "class factory" which returns the
     appropriate mpi-parallel reader class instance based upon the
     inputs. Each subclass contains a different ...
 
@@ -60,15 +59,10 @@ def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', ndims=3,
 
     Output:
     """
-
-    if ftype == 'binary':
-        newReader = mpiBinaryReader(comm, idir, ndims, decomp, nx, nh,
-                                    periodic, byteswap)
-    else:
-        newReader = mpiBinaryReader(comm, idir, ndims, decomp, nx, nh,
-                                    periodic, byteswap)
-
-    return newReader
+    if MPI.COMM_WORLD.rank == 0:
+        print 'mpiReader.factory() not yet written!'
+    MPI.Finalize()
+    sys.exit(1)
 # -----------------------------------------------------------------------------
 
 
@@ -80,7 +74,7 @@ class mpiBinaryReader(object):
         - this thing is pretty much not developed at all.
     """
 
-    def __init__(self, comm=MPI.COMM_WORLD, idir='./', ndims=3,
+    def __init__(self, mpi_comm=MPI.COMM_WORLD, idir='./', ndims=3,
                  decomp=None, nx=None, nh=None, periodic=None, byteswap=True):
 
             # DEFINE THE INSTANCE VARIABLES
@@ -88,7 +82,9 @@ class mpiBinaryReader(object):
             # "Protected" variables masked by property method
             #  Global variables
             self.__idir = idir
-            self.__comm = comm
+            self.__comm = mpi_comm
+            self.__taskid = mpi_comm.Get_rank()
+            self.__ntasks = mpi_comm.Get_size()
             self.__ndims = ndims
             self.__byteswap = byteswap
 
@@ -195,7 +191,7 @@ class mpiBinaryReader(object):
 
         return t
 
-    def read_variable(self, filename, dtype=np.float64):
+    def get_variable(self, filename, dtype=np.float64):
         """Currently hard coded to 1D domain decomposition."""
         status = MPI.Status()
         stmp = np.zeros(self.nnx, dtype=np.float32)
@@ -211,7 +207,7 @@ class mpiBinaryReader(object):
             var = stmp.astype(dtype)
         return var
 
-    def read_variable_ghost_cells(self, filename, dtype=np.float64):
+    def get_variable_and_ghost_cells(self, filename, dtype=np.float64):
         """Currently hard coded to 1D domain decomposition."""
         status = MPI.Status()
         shape = np.array([self.nh[0]*2, self.nnx[1], self.nnx[2]])
@@ -240,12 +236,7 @@ class mpiBinaryReader(object):
 
         fhandle.Close()
 
-        if self.byteswap:
-            var = stmp.byteswap(True).astype(dtype)
-        else:
-            var = stmp.astype(dtype)
-        return var
-
+        return stmp.byteswap().astype(dtype)
 
 ###############################################################################
 # class mpiVtkReader(object):

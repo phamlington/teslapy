@@ -52,22 +52,11 @@ http://tesla.colorado.edu
 from mpi4py import MPI
 import numpy as np
 from math import *
-from teslacu.fft_mpi4py_numpy import *          # FFT transforms
-from teslacu.stats_mpi4py_numpy import *        # statistical functions
+
+from teslacu.fft import rfft3, irfft3               # FFT transforms
+from teslacu.stats import psum, central_moments     # statistical functions
 
 world_comm = MPI.COMM_WORLD
-
-
-# def psum(data):
-#     """
-#     input argument data can be any n-dimensional array-like object, including
-#     a 0D scalar value or 1D array.
-#     """
-#     psum = np.asarray(data)
-#     for n in range(data.ndim):
-#         psum.sort(axis=-1)
-#         psum = np.sum(psum, axis=-1)
-#     return psum
 
 
 class spectralLES(object):

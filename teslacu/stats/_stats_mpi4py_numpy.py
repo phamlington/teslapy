@@ -6,7 +6,7 @@ domain decomposition or dimensionality.
 from mpi4py import MPI
 import numpy as np
 
-__all__ = ["psum", "central_moments", "histogram1", "histogram2"]
+__all__ = ['psum', 'central_moments', 'histogram1', 'histogram2']
 
 
 def psum(data):

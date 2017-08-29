@@ -48,13 +48,13 @@ import os
 # from vtk import vtkStructuredPointsReader
 # from vtk.util import numpy_support as vn
 
-__all__ = []
+__all__ = ['mpiWriter']
 
 
-def factory(comm=MPI.COMM_WORLD, odir='./', ndims=3, decomp=None,
-            nx=None, nh=None, byteswap=False, ftype='binary'):
+def mpiWriter(comm=MPI.COMM_WORLD, odir='./',  ftype='binary', ndims=3,
+              decomp=None, nx=None, nh=None, byteswap=False):
     """
-    The factory() function is a "class factory" which returns the
+    The mpiWriter() function is a "class factory" which returns the
     appropriate mpi-parallel writer class instance based upon the
     inputs. Each subclass contains a different ...
 
@@ -62,10 +62,15 @@ def factory(comm=MPI.COMM_WORLD, odir='./', ndims=3, decomp=None,
 
     Output:
     """
-    if MPI.COMM_WORLD.rank == 0:
-        print('mpiWriter.factory() not yet written!')
-    MPI.Finalize()
-    sys.exit(1)
+
+    if ftype == 'binary':
+        newWriter = mpiBinaryWriter(comm, odir, ndims, decomp,
+                                    nx, nh, byteswap)
+    else:
+        newWriter = mpiBinaryWriter(comm, odir, ndims, decomp,
+                                    nx, nh, byteswap)
+
+    return newWriter
 # -----------------------------------------------------------------------------
 
 

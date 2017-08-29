@@ -33,11 +33,8 @@ http://tesla.colorado.edu
 
 from mpi4py import MPI
 import numpy as np
-# import mpiAnalyzer
-# import mpiReader
-# import mpiWriter
 from spectralLES import spectralLES
-from teslacu.fft_mpi4py_numpy import *  # FFT transforms
+from teslacu.fft import irfft3  # FFT transforms
 import sys
 # from memory_profiler import profile
 # import os
@@ -68,54 +65,46 @@ def taylor_green_vortex():
         MPI.Finalize()
         sys.exit(1)
 
-    # -------------------------------------------------------------------------
-    # Generate a spectralLES solver, data writer, and data analyzer with the
-    # appropriate class factories, MPI communicators, and paramters
-
-    # writer = mpiReader.mpiBinaryWriter(
-    #             mpi_comm=comm, idir=idir, ndims=3,
-    #             decomp=[True, False, False], nx=[N]*3, nh=None,
-    #             periodic=[True]*3, byteswap=False)
-
-    # analyzer = mpiAnalyzer.factory(
-    #             comm=comm, idir=idir, odir=odir, probID=pid, L=L, nx=N,
-    #             geo='hit', method='spectral')
-
     solver = spectralLES(comm, L, N, nu)
 
+    kmax_dealias = (2./3.)*(N//2+1)
+    solver.les_filter = np.array((abs(solver.K[0]) < kmax_dealias)
+                                 *(abs(solver.K[1]) < kmax_dealias)
+                                 *(abs(solver.K[2]) < kmax_dealias),
+                                 dtype=bool)
+
+    sys.stdout.flush()  # forces Python 3 to flush print statements
+
     # -------------------------------------------------------------------------
-    # Initialize the simulation
 
     t = 0.0
     tstep = 0
     dt = 0.01
-    tlimit = 8*np.pi
+    tlimit = 1.0
     t0 = time.time()
 
     solver.Initialize_Taylor_Green_vortex()
     solver.computeAD = solver.computeAD_vorticity_formulation
 
     while t < tlimit-1.e-8:
-        if tstep % 10 == 0:
-            k = comm.reduce(0.5*np.sum(np.square(solver.U))*(1./N)**3)
-            if comm.rank == 0:
-                print "{}\t{}".format(k, dt)
+        k = comm.reduce(0.5*np.sum(np.square(solver.U)*(1./N)**3))
+        if comm.rank == 0:
+            print('cycle = %2.0d, KE = %12.10f' % (tstep, k))
 
         t += dt
         tstep += 1
         solver.RK4_integrate(dt)
 
-        # Update the dynamic dt based on CFL constraint
-        dt = solver.new_dt_const_nu(0.45)
+        sys.stdout.flush()  # forces Python 3 to flush print statements
 
     solver.U[0] = irfft3(comm, solver.U_hat[0])
     solver.U[1] = irfft3(comm, solver.U_hat[1])
     solver.U[2] = irfft3(comm, solver.U_hat[2])
 
-    k = 0.5*comm.reduce(np.sum(np.square(solver.U))*(1./N)**3)
-    k_true = 0.124515267367  # from spectralDNS3D_short.py run until T=1.0
+    k = comm.reduce(0.5*np.sum(np.square(solver.U)*(1./N)**3))
+    k_true = 0.12451526736699045  # from spectralDNS3D_short.py run until T=1.0
     if comm.rank == 0:
-        print("Time = {}".format(time.time()-t0))
+        print("Time = %12.8f, KE = %16.13f" % (time.time()-t0, k))
 
         # assert that the two codes must be within single-precision round-off
         # error of each other

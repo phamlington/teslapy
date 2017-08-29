@@ -19,13 +19,13 @@ Department of Mechanical Engineering
 University of Colorado Boulder
 http://tesla.colorado.edu
 """
-import numpy as np
-from scipy.linalg import circulant
+import numpy as _np
+from scipy.linalg import circulant as _circulant
 
 __all__ = ['central_matrix', 'central_deriv']
 
 
-def central_matrix(n, d=1, o=4, dtype=np.float64):
+def central_matrix(n, d=1, o=4, dtype=_np.float64):
     '''
     central_matrix(n,d=1,o=4):
 
@@ -55,65 +55,65 @@ def central_matrix(n, d=1, o=4, dtype=np.float64):
 
     if d==1:
         if o==2:
-            d1 = np.ones(n-1, dtype)
-            A = np.diag(d1, 1) - np.diag(d1, -1)
+            d1 = _np.ones(n-1, dtype)
+            A = _np.diag(d1, 1) - _np.diag(d1, -1)
 
         elif o==4:
-            d1 = (8./12)*np.ones(n-1, dtype)
-            d2 = (1./12)*np.ones(n-2, dtype)
-            A = np.diag(d2, -2) - np.diag(d1, -1) + np.diag(d1, 1) \
-                - np.diag(d2, 2)
+            d1 = (8./12)*_np.ones(n-1, dtype)
+            d2 = (1./12)*_np.ones(n-2, dtype)
+            A = _np.diag(d2, -2) - _np.diag(d1, -1) + _np.diag(d1, 1) \
+                - _np.diag(d2, 2)
 
         elif o==6:
-            d1 = (3./4)*np.ones(n-1, dtype)
-            d2 = (3./20)*np.ones(n-2, dtype)
-            d3 = (1./60)*np.ones(n-3, dtype)
-            A = -np.diag(d3, -3) + np.diag(d2, -2) - np.diag(d1, -1) \
-                + np.diag(d1, 1) - np.diag(d2, 2) + np.diag(d3, 3)
+            d1 = (3./4)*_np.ones(n-1, dtype)
+            d2 = (3./20)*_np.ones(n-2, dtype)
+            d3 = (1./60)*_np.ones(n-3, dtype)
+            A = -_np.diag(d3, -3) + _np.diag(d2, -2) - _np.diag(d1, -1) \
+                + _np.diag(d1, 1) - _np.diag(d2, 2) + _np.diag(d3, 3)
 
         elif o==8:
-            d1 = (4./5)*np.ones(n-1, dtype)
-            d2 = (1./5)*np.ones(n-2, dtype)
-            d3 = (4./105)*np.ones(n-3, dtype)
-            d4 = (1./280)*np.ones(n-4, dtype)
-            A = np.diag(d4, -4) - np.diag(d3, -3) + np.diag(d2, -2) \
-                - np.diag(d1, -1) + np.diag(d1, 1) - np.diag(d2, 2) \
-                + np.diag(d3, 3) - np.diag(d4, 4)
+            d1 = (4./5)*_np.ones(n-1, dtype)
+            d2 = (1./5)*_np.ones(n-2, dtype)
+            d3 = (4./105)*_np.ones(n-3, dtype)
+            d4 = (1./280)*_np.ones(n-4, dtype)
+            A = _np.diag(d4, -4) - _np.diag(d3, -3) + _np.diag(d2, -2) \
+                - _np.diag(d1, -1) + _np.diag(d1, 1) - _np.diag(d2, 2) \
+                + _np.diag(d3, 3) - _np.diag(d4, 4)
 
         else:
             raise
 
     elif d==2:
         if o==2:
-            c = 2*np.ones(n, dtype)
-            d1 = np.ones(n-1, dtype)
-            A = np.diag(d1, -1) - np.diag(c, 0) + np.diag(d1, 1)
+            c = 2*_np.ones(n, dtype)
+            d1 = _np.ones(n-1, dtype)
+            A = _np.diag(d1, -1) - _np.diag(c, 0) + _np.diag(d1, 1)
 
         elif o==4:
-            c = (30./12)*np.ones(n, dtype)
-            d1 = (16./12)*np.ones(n-1, dtype)
-            d2 = (1./12)*np.ones(n-2, dtype)
-            A = -np.diag(d2, -2) + np.diag(d1, -1) - np.diag(c, 0) \
-                - np.diag(d2, 2) + np.diag(d1, 1)
+            c = (30./12)*_np.ones(n, dtype)
+            d1 = (16./12)*_np.ones(n-1, dtype)
+            d2 = (1./12)*_np.ones(n-2, dtype)
+            A = -_np.diag(d2, -2) + _np.diag(d1, -1) - _np.diag(c, 0) \
+                - _np.diag(d2, 2) + _np.diag(d1, 1)
 
         elif o==6:
-            c = (49./18)*np.ones(n, dtype)
-            d1 = (3./2)*np.ones(n-1, dtype)
-            d2 = (3./20)*np.ones(n-2, dtype)
-            d3 = (1./90)*np.ones(n-3, dtype)
-            A = np.diag(d3, -3) - np.diag(d2, -2) + np.diag(d1, -1) \
-                - np.diag(c, 0) + np.diag(d3, 3) - np.diag(d2, 2) \
-                + np.diag(d1, 1)
+            c = (49./18)*_np.ones(n, dtype)
+            d1 = (3./2)*_np.ones(n-1, dtype)
+            d2 = (3./20)*_np.ones(n-2, dtype)
+            d3 = (1./90)*_np.ones(n-3, dtype)
+            A = _np.diag(d3, -3) - _np.diag(d2, -2) + _np.diag(d1, -1) \
+                - _np.diag(c, 0) + _np.diag(d3, 3) - _np.diag(d2, 2) \
+                + _np.diag(d1, 1)
 
         elif o==8:
-            c = (205./72)*np.ones(n, dtype)
-            d1 = (8./5)*np.ones(n-1, dtype)
-            d2 = (1./5)*np.ones(n-2, dtype)
-            d3 = (8./315)*np.ones(n-3, dtype)
-            d4 = (1./560)*np.ones(n-4, dtype)
-            A = -np.diag(d4, -4) + np.diag(d3, -3) - np.diag(d2, -2) \
-                + np.diag(d1, -1) - np.diag(c, 0) -np.diag(d4, 4) \
-                + np.diag(d3, 3) - np.diag(d2, 2) + np.diag(d1, 1)
+            c = (205./72)*_np.ones(n, dtype)
+            d1 = (8./5)*_np.ones(n-1, dtype)
+            d2 = (1./5)*_np.ones(n-2, dtype)
+            d3 = (8./315)*_np.ones(n-3, dtype)
+            d4 = (1./560)*_np.ones(n-4, dtype)
+            A = -_np.diag(d4, -4) + _np.diag(d3, -3) - _np.diag(d2, -2) \
+                + _np.diag(d1, -1) - _np.diag(c, 0) -_np.diag(d4, 4) \
+                + _np.diag(d3, 3) - _np.diag(d2, 2) + _np.diag(d1, 1)
 
         else:
             raise ValueError
@@ -148,11 +148,11 @@ def central_deriv(phi, h, bc='periodic', k=1, order=4, axis=-1):
     axis = axis % phi.ndim
 
     nx= phi.shape[axis]
-    c = np.zeros(nx)
+    c = _np.zeros(nx)
     c[1:3] = [-8./12, 1./12]
     c[-2:] = [-1./12, 8./12]
     c /= h
-    A = circulant(c)
+    A = _circulant(c)
 
     # A = (1.0/h**k)*central_matrix(nx, k, order, phi.dtype)
 
@@ -171,11 +171,11 @@ def central_deriv(phi, h, bc='periodic', k=1, order=4, axis=-1):
     #                      'only periodic bc implemented')
 
     if axis != phi.ndim-1:
-        phi = np.swapaxes(phi, axis, -1)
+        phi = _np.swapaxes(phi, axis, -1)
 
-    deriv = np.einsum('ijk,mk->ijm', phi, A)
+    deriv = _np.einsum('ijk,mk->ijm', phi, A)
 
     if axis != phi.ndim-1:
-        deriv = np.swapaxes(deriv, axis, -1)
+        deriv = _np.swapaxes(deriv, axis, -1)
 
     return deriv

@@ -19,10 +19,10 @@ Department of Mechanical Engineering
 University of Colorado Boulder
 http://tesla.colorado.edu
 """
-import numpy as np
-from scipy.interpolate import Akima1DInterpolator as interp
+import numpy as _np
+from scipy.interpolate import Akima1DInterpolator as _interp
 
-__all__ = ["deriv"]
+__all__ = ['deriv']
 
 
 def deriv(phi, h, axis=0):
@@ -47,15 +47,15 @@ def deriv(phi, h, axis=0):
     axis = axis % phi.ndim
 
     if axis != 0:
-        phi = np.swapaxes(phi, axis, 0)
+        phi = _np.swapaxes(phi, axis, 0)
 
     s = list(phi.shape)
-    x = np.arange(-3, s[0]+3, dtype=np.float64)
-    xi = np.arange(-0.5, s[0]+0.5, 1.0, dtype=np.float64)
-    deriv = np.empty_like(phi)
+    x = _np.arange(-3, s[0]+3, dtype=_np.float64)
+    xi = _np.arange(-0.5, s[0]+0.5, 1.0, dtype=_np.float64)
+    deriv = _np.empty_like(phi)
 
     s[0] += 6
-    tmp = np.empty(s, dtype=phi.dtype)
+    tmp = _np.empty(s, dtype=phi.dtype)
 
     tmp[3:-3] = phi
     tmp[:3] = phi[-3:]
@@ -63,11 +63,11 @@ def deriv(phi, h, axis=0):
 
     for j in range(s[-2]):
         for i in range(s[-1]):
-            spline = interp(x, tmp[..., j, i])
+            spline = _interp(x, tmp[..., j, i])
             phi2 = spline(xi)
             deriv[..., j, i] = (phi2[1:] - phi2[:-1])*(1.0/h)
 
     if axis != 0:
-        deriv = np.swapaxes(deriv, axis, 0)
+        deriv = _np.swapaxes(deriv, axis, 0)
 
     return deriv

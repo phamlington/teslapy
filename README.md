@@ -1,5 +1,5 @@
-spectralLES Fourier spectral collocation solver class for performing computational fluid dynamics simulations.
+Turbulence and Energy Systems Laboratory (TESLa) public Python code repository…
 
 pre-beta release
 
-contact Colin for help
+contact Colin (colin.towery@colorado.edu) for help

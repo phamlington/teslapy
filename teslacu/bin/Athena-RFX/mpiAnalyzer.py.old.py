@@ -17,11 +17,6 @@ However, Python and C/C++ are natively row-major index order, i.e.
 [x3, x2, x1], where x1 remains contiguous in memory and x3 remains the
 inhomogenous dimension.
 
-The TESLaCU package adheres to row-major order for indexing data grids and when
-indexing variables associated with the grid dimensions (e.g. nx, ixs, etc.),
-however all vector fields retain standard Einstein notation indexing order,
-(e.g. u[0] == u1, u[1] == u2, u[2] == u3).
-
 Coding Style Guide:
 -------------------
 This module generally adheres to the Python style guide published in PEP 8,
@@ -56,32 +51,20 @@ import numpy as np
 from math import *
 import os
 import sys
+import fft_mpi4py_numpy as tcfft        # FFT transforms and math functions
+import stats_mpi4py_numpy as tcstats    # statistical functions
+import findiff_numpy_scipy as tcfd      # finite difference functions
+import akima_numpy_scipy as tcas        # Akima spline approximation functions
 # from memory_profiler import profile
 
-from . import fft as tcfft          # FFT transforms and math functions
-from . import stats as tcstats      # statistical functions
-from .diff import central as tcfd   # finite difference functions
-from .diff import akima as tcas     # Akima spline approximation functions
-
-__all__ = ['mpiAnalyzer']
-
 world_comm = MPI.COMM_WORLD
-# psum = tcstats.psum
+psum = tcstats.psum
 
 
 ###############################################################################
-def mpiAnalyzer(comm=world_comm, idir='./data/', odir='./analysis/',
-                probID='athena', ndims=3, L=[2*np.pi]*3, nx=[512]*3, nh=None,
-                geo=None, rct=None, method='central_diff'):
-    """
-    The mpiAnalyzer() function is a "class factory" which returns the
-    appropriate mpi-parallel analyzer class instance based upon the
-    inputs. Each subclass contains a different ...
-
-    Arguments:
-
-    Output:
-    """
+def factory(comm=world_comm, idir='./data/', odir='./analysis/',
+            probID='athena', ndims=3, L=[2*np.pi]*3, nx=[512]*3, nh=None,
+            geo=None, rct=None, method='central_diff'):
 
     if geo == 'hit' and rct is None:
         newAnalyzer = hitAnalyzer(comm, idir, odir, probID, ndims, L, nx,
@@ -89,7 +72,7 @@ def mpiAnalyzer(comm=world_comm, idir='./data/', odir='./analysis/',
     elif geo is None and rct is None:
         newAnalyzer = mpiBaseAnalyzer(comm, idir, odir, probID, ndims, L, nx)
     else:
-        if comm.rank == 0:
+        if ens_comm.rank == 0:
             print("mpiAnalyzer.factory configuration arguments not recognized!"
                   "\nDefaulting to base analysis class: mpiBaseAnalyzer().")
         newAnalyzer = mpiBaseAnalyzer(comm, idir, odir, probID, ndims, L, nx)
@@ -101,7 +84,44 @@ def mpiAnalyzer(comm=world_comm, idir='./data/', odir='./analysis/',
 class mpiBaseAnalyzer(object):
     """
     class mpiBaseAnalyzer(object) ...
+
+    Arguments:
+        idir
+        odir
+        ndims
+        L
+        nx
+
+    Instance variables:
+        __idir
+        __odir
+        __ndims
+        __sim_geom
+        __sim_rctn
+        __periodic
+        __reacting
+        L
+        nx
+        dx
+
+    Instance properties:
+        idir
+        odir
+        ndims
+        comm
+        sim_geom
+        sim_rctn
+        periodic
+        reacting
+
+    Instance methods:
+        histogram1
+        histogram2
+        mpi_histogram1
+        mpi_histogram2
     """
+
+# Class _init_ ----------------------------------------------------------------
 
     def __init__(self, comm, idir, odir, probID, ndims, L, nx):
 
@@ -152,7 +172,7 @@ class mpiBaseAnalyzer(object):
         self.ixs = np.zeros(ndims, dtype=int)
         self.ixe = self.__nx.copy()
 
-        self.nnx[0] = self.__nx[0]//self.comm.size
+        self.nnx[0] = self.__nx[0]/self.comm.size
         self.ixs[0] = self.nnx[0]*self.comm.rank
         self.ixe[0] = self.ixs[0]+self.nnx[0]
 
@@ -180,7 +200,7 @@ class mpiBaseAnalyzer(object):
 
         self.mpi_moments_file = '%s%s.moments' % (self.odir, self.prefix)
 
-    # Class Properities -------------------------------------------------------
+# Class Properities -----------------------------------------------------------
 
     def __enter__(self):
         # with statement initialization
@@ -234,7 +254,7 @@ class mpiBaseAnalyzer(object):
     def nx(self):
         return self.__nx
 
-    # Statistical Moments -----------------------------------------------------
+# Statistical Moments ---------------------------------------------------------
 
     def local_moments(self, data, w=None, wbar=None, N=None, unbias=True):
         """
@@ -378,7 +398,7 @@ class mpiBaseAnalyzer(object):
 
         return m
 
-    # Data Transposing --------------------------------------------------------
+# Data Transposing ------------------------------------------------------------
 
     def z2y_slab_exchange(self, var):
         """
@@ -388,15 +408,16 @@ class mpiBaseAnalyzer(object):
 
         nnz, ny, nx = var.shape
         nz = nnz*self.comm.size
-        nny = ny//self.comm.size
+        nny = ny/self.comm.size
 
-        temp = np.empty([self.comm.size, nnz, nny, nx], dtype=var.dtype)
+        temp1 = np.empty([self.comm.size, nnz, nny, nx], dtype=var.dtype)
+        temp2 = np.empty([self.comm.size, nnz, nny, nx], dtype=var.dtype)
 
-        temp[:] = np.rollaxis(var.reshape([nnz, self.comm.size, nny, nx]), 1)
-        self.comm.Alltoall(MPI.IN_PLACE, temp)  # send, receive
-        temp.resize([nz, nny, nx])
+        temp1[:] = np.rollaxis(var.reshape([nnz, self.comm.size, nny, nx]), 1)
+        self.comm.Alltoall(temp1, temp2)  # send, receive
+        temp2.resize([nz, nny, nx])
 
-        return temp
+        return temp2
 
     def y2z_slab_exchange(self, varT):
         """
@@ -405,60 +426,74 @@ class mpiBaseAnalyzer(object):
         """
 
         nz, nny, nx = varT.shape
-        nnz = nz//self.comm.size
+        nnz = nz/self.comm.size
         ny = nny*self.comm.size
 
-        temp = np.empty([self.comm.size, nnz, nny, nx], dtype=varT.dtype)
+        temp1 = np.empty([self.comm.size, nnz, nny, nx], dtype=varT.dtype)
+        temp2 = np.empty([self.comm.size, nnz, nny, nx], dtype=varT.dtype)
 
-        self.comm.Alltoall(temp, varT.reshape(temp.shape))  # send, receive
-        temp.resize([nnz, ny, nx])
-        temp[:] = np.rollaxis(temp, 1).reshape(temp.shape)
+        temp1[:] = varT.reshape(temp1.shape)
+        self.comm.Alltoall(temp1, temp2)  # send, receive
+        temp1.resize([nnz, ny, nx])
+        temp1[:] = np.rollaxis(temp2, 1).reshape(temp1.shape)
 
-        return temp
+        return temp1
 
 
 ###############################################################################
 class hitAnalyzer(mpiBaseAnalyzer):
     """
-    class hitAnalyzer(mpiBaseAnalyzer)
+    class hitAnalyzer(mpiBaseAnalyzer) ...
+    subclass instance variables:
+        nk
+        dk
+        km3
+        km2
+        K
+
+    subclass methods
+        vector_psd      - Computes (1D) Fourier spectral power of vector
+                            and writes it to text file
+        scalar_psd      - Computes (1D) Fourier spectral power of scalar
+                            and writes it to text file
         ...
     """
+
+# Class __init__ --------------------------------------------------------------
 
     def __init__(self, comm, idir, odir, probID, ndims, L, nx,
                  method='central_diff'):
 
-        super(hitAnalyzer, self).__init__(comm, idir, odir, probID,
-                                          ndims, L, nx)
+        super(hitAnalyzer, self).__init__(
+                                        comm, idir, odir, probID, ndims, L, nx)
 
         self.__sim_geom = "Homogeneous Isotropic Turbulence"
         self.__periodic = [True]*ndims
 
         # Spectral variables (1D Decomposition)
         self.nk = self.nx.copy()
-        self.nk[-1] = self.nx[-1]//2+1
+        self.nk[-1] = self.nx[-1]/2+1
         self.nnk = self.nk.copy()
         self.nnk[1] = self.nnx[0]
         self.dk = 1.0/self.L[0]
 
+        nk = self.nk[-1]
         nx = self.nx[-1]
         dk = self.dk
 
         # The teslacu.fft.rfft3 and teslacu.fft.irfft3 functions currently
         # transpose Z and Y in the forward fft (rfft3) and inverse the
         # tranpose in the inverse fft (irfft3).
-        # These FFT routines and these variables below assume that ndims=3
-        # which ruins the generality I so carefully crafted in the base class
-        k1 = np.fft.rfftfreq(self.nx[2])*dk*nx
-        k2 = np.fft.fftfreq(self.nx[1])*dk*nx
-        k2 = k2[self.ixs[0]:self.ixe[0]].copy()
-        k3 = np.fft.fftfreq(self.nx[0])*dk*nx
+        k1 = np.fft.rfftfreq(nx).reshape((1, 1, nk))*dk*nx
+        k2g = np.fft.fftfreq(nx).reshape((1, nx, 1))*dk*nx
+        k2 = k2g[:, self.ixs[0]:self.ixe[0], :]
+        k3 = np.fft.fftfreq(nx).reshape((nx, 1, 1))*dk*nx
 
         # MPI local 3D wavemode index
-        self.K = np.array(np.meshgrid(k3, k2, k1, indexing='ij'))
-        self.Ksq = np.sum(np.square(self.K), axis=0)
-        self.k = np.sqrt(self.Ksq)
-        self.km = (self.k/dk).astype(int)
-        self.k1 = k1
+        self.k = np.sqrt(k1*k1+k2*k2+k3*k3)
+        self.km = np.rint(self.k/dk)
+        self.K = [k1, k2, k3]
+        self.k1 = np.fft.rfftfreq(nx)*dk*nx
 
         if method == 'central_diff':
             self.deriv = self._centdiff_deriv
@@ -467,13 +502,13 @@ class hitAnalyzer(mpiBaseAnalyzer):
         elif method == 'fourier':
             self.deriv = self._fft_deriv
         else:
-            if comm.rank == 0:
+            if ens_comm.rank == 0:
                 print("mpiAnalyzer.hitAnalyzer.__init__(): "
                       "'method' argument not recognized!\n"
                       "Defaulting to Akima spline flux differencing.")
             self.deriv = self._akima_deriv
 
-    # Spectra -----------------------------------------------------------------
+# Spectra ---------------------------------------------------------------------
 
     def spectral_density(self, var, fname, title, ylabel):
         """
@@ -498,7 +533,8 @@ class hitAnalyzer(mpiBaseAnalyzer):
             spect3d = np.sum(spect3d, axis=0)
         spect3d[..., 0] *= 0.5
 
-        spect1d = tcfft.shell_average(self.comm, spect3d, self.km)
+        spect1d = tcfft.shell_average(self.comm, self.nk[-1], self.dk,
+                                      self.km, spect3d)
 
         if self.comm.rank == 0:
             fh = open('%s%s%s.spectra' % (self.odir, self.prefix, fname), 'w')
@@ -537,8 +573,8 @@ class hitAnalyzer(mpiBaseAnalyzer):
         Convenience function for MPI-distributed 3D r2c FFT of vector.
         """
         nnz, ny, nx = var.shape[1:]
-        nk = nx//2+1
-        nny = ny//self.comm.size
+        nk = nx/2+1
+        nny = ny/self.comm.size
         nz = nnz*self.comm.size
 
         if var.dtype.itemsize == 8:
@@ -562,7 +598,7 @@ class hitAnalyzer(mpiBaseAnalyzer):
         nz, nny, nk = fvar.shape[1:]
         nx = (nk-1)*2
         ny = nny*self.comm.size
-        nnz = nz//self.comm.size
+        nnz = nz/self.comm.size
 
         if fvar.dtype.itemsize == 16:
             fft_real = np.float64
@@ -578,11 +614,13 @@ class hitAnalyzer(mpiBaseAnalyzer):
 
         return var
 
-    def shell_average(self, E3):
+    def shell_average(self, F3):
         """
         Convenience function for shell averaging
         """
-        return tcfft.shell_average(self.comm, E3, self.km)
+        F3[..., 0] *= 0.5
+        return tcfft.shell_average(
+                            self.comm, self.nk[-1], self.dk, self.km, F3)
 
     def filter_kernel(self, ell, gtype='comp_exp', dtype=np.complex128):
         """
@@ -598,7 +636,7 @@ class hitAnalyzer(mpiBaseAnalyzer):
 
         elif gtype == 'comp_exp':
             """
-            A 'COMPact EXPonential' filter which has
+            'COMPact EXPonential' filter which has
             1) compact support in a ball of radius ell (or 1/ell)
             2) is strictly positive, and
             3) is smooth (infinitely differentiable)
@@ -632,7 +670,7 @@ class hitAnalyzer(mpiBaseAnalyzer):
         return Ghat
 
     def scalar_filter(self, phi, Ghat):
-        return tcfft.irfft3(self.comm, Ghat*tcfft.rfft3(self.comm, phi))
+        return self.scl_ifft(Ghat*self.scl_fft(phi))
 
     def vector_filter(self, u, Ghat):
         return self.vec_ifft(Ghat*self.vec_fft(u))
@@ -725,21 +763,12 @@ class hitAnalyzer(mpiBaseAnalyzer):
         return A, omga, Aii
 
 # Underlying Linear Algebra Routines ------------------------------------------
-    # Note that the FFT derivative does not rely on the teslacu FFT package
-    # This allows FFT-based derivatives to conform to a consistent deriv
-    # template for all types of numerical differentiation.
-    # The 'k' parameter asks for the order of the derivative, but only the FFT
-    # derivative can provide any order derivative to the user.
 
     # @profile
     def _centdiff_deriv(self, var, dim=0, k=1):
         """
         Calculate and return the specified derivative of a 3D scalar field at
         the specified order of accuracy.
-        While k is passed on to the central_deriv function in the teslacu
-        finite difference module, central_deriv may not honor a request for
-        anything but the first derivative, depending on it's state of
-        development.
         """
         dim = dim % 3
         axis = 2-dim
@@ -756,7 +785,6 @@ class hitAnalyzer(mpiBaseAnalyzer):
     def _akima_deriv(self, var, dim=0, k=1):
         """
         Calculate and return the _first_ derivative of a 3D scalar field.
-        The k parameter is ignored, a first derivative is _always_ returned.
         """
         dim = dim % 3
         axis = 2-dim
@@ -773,8 +801,7 @@ class hitAnalyzer(mpiBaseAnalyzer):
     def _fft_deriv(self, var, dim=0, k=1):
         """
         Calculate and return the specified derivative of a 3D scalar field.
-        This function uses 1D FFTs and MPI-decomposed transposing instead of
-        MPI-decomposed 3D FFTs.
+        This function could be improved by using 1D FFTs instead of 3D FFTs.
         """
         dim = dim % 3
         axis = 2-dim

@@ -50,10 +50,11 @@ import getopt
 # import os
 import time
 from math import *
+
 from spectralLES import spectralLES
-from teslacu import mpiAnalyzer, mpiReader, mpiWriter
-from teslacu.fft_mpi4py_numpy import *  # FFT transforms
-from teslacu.analysis_functions import scalar_analysis
+from teslacu import mpiAnalyzer, mpiWriter
+from teslacu.fft import irfft3  # FFT transforms
+from HIT_analysis_functions import scalar_analysis
 
 comm = MPI.COMM_WORLD
 
@@ -82,12 +83,11 @@ def homogeneous_isotropic_turbulence(args):
     # appropriate class factories, MPI communicators, and paramters.
     # In the future a data plotter object could also be generated here!
 
-    writer = mpiWriter.mpiBinaryWriter(comm=comm, odir=("%s/data/" % odir),
-                                       nx=[N]*3)
+    writer = mpiWriter(comm=comm, odir=("%s/data/" % odir), nx=[N]*3)
 
-    analyzer = mpiAnalyzer.factory(comm=comm, idir=idir,
-                                   odir=("%s/analysis/" % odir), probID=pid,
-                                   L=L, nx=N, geo='hit', method='akima')
+    analyzer = mpiAnalyzer(comm=comm, idir=idir, odir=("%s/analysis/" % odir),
+                           probID=pid, L=L, nx=N, geo='hit', method='akima')
+
     Ek_fmt = "\widehat{{{0}}}^*\widehat{{{0}}}".format
     emin = np.inf
     emax = np.NINF
@@ -276,7 +276,7 @@ def get_inputs():
     """
 
     # import 'defaults' from parameters file
-    from parameters import idir, odir, pid, L, N, cfl, tlimit, dt_rst, \
+    from HIT_parameters import idir, odir, pid, L, N, cfl, tlimit, dt_rst, \
         dt_bin, dt_hst, dt_spec, nu, eps_inj, Urms, k_exp, k_peak
 
     help_string = ("spectralLES HIT solver command line options:\n"
