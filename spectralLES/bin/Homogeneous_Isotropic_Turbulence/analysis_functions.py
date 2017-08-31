@@ -130,8 +130,8 @@ def gradient_analysis(mA, A, minmax, w, wbar, fname, title, symb):
     symb  : latex math string
     """
 
-    for j in range(0, 3):
-        for i in range(0, 3):
+    for j in range(3):
+        for i in range(3):
             tij = ' {}{}'.format(i+1, j+1)
             sij = '_{{{}{}}}'.format(i+1, j+1)
             mA.write_mpi_moments(
