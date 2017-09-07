@@ -133,8 +133,8 @@ class mpiBinaryReader(object):
 
             if sum(self.__decomp) == 1:
                 # 1D domain decomposition (plates in 3D, pencils in 2D)
-                self.__nnx[0] = self.__nx[0]/self.__ntasks
-                self.__ixs[0] = self.__nnx[0]*self.__taskid
+                self.__nnx[0] = self.__nx[0]/comm.size
+                self.__ixs[0] = self.__nnx[0]*comm.rank
                 self.__ixe[0] = self.__ixs[0]+self.__nnx[0]
             else:
                 raise AssertionError("mpiReader can't yet handle anything "
@@ -195,28 +195,28 @@ class mpiBinaryReader(object):
 
         return t
 
-    def read_variable(self, filename, dtype=np.float64):
+    def read_variable(self, filename, ftype=np.float32, mtype=np.float64):
         """Currently hard coded to 1D domain decomposition."""
         status = MPI.Status()
-        stmp = np.zeros(self.nnx, dtype=np.float32)
+        temp = np.zeros(self.nnx, dtype=ftype)
         fpath = self.__idir+filename
         fhandle = MPI.File.Open(self.comm, fpath)
-        offset = self.taskid*stmp.nbytes
-        fhandle.Read_at_all(offset, stmp, status)
+        offset = self.__comm.rank*temp.nbytes
+        fhandle.Read_at_all(offset, temp, status)
         fhandle.Close()
 
         if self.byteswap:
-            var = stmp.byteswap(True).astype(dtype)
+            var = temp.byteswap(True).astype(mtype)
         else:
-            var = stmp.astype(dtype)
+            var = temp.astype(mtype)
         return var
 
     def read_variable_ghost_cells(self, filename, dtype=np.float64):
         """Currently hard coded to 1D domain decomposition."""
         status = MPI.Status()
         shape = np.array([self.nh[0]*2, self.nnx[1], self.nnx[2]])
-        stmp = np.zeros(shape, dtype=np.float32)
-        hsize = shape.prod()*2     # 1/2 of stmp size * 4 bytes
+        temp = np.zeros(shape, dtype=np.float32)
+        hsize = shape.prod()*2     # 1/2 of temp size * 4 bytes
         dsize = self.nnx.prod()*4  # subdomain size * 4 bytes
 
         fpath = self.__idir+filename
@@ -228,7 +228,7 @@ class mpiBinaryReader(object):
         else:
             idx = self.taskid
         offset = dsize*idx - hsize
-        fhandle.Read_at_all(offset, stmp[:self.nh[0], ...], status)
+        fhandle.Read_at_all(offset, temp[:self.nh[0], ...], status)
 
         # read in the +z ghost zones
         if self.taskid==self.ntasks-1:
@@ -236,14 +236,14 @@ class mpiBinaryReader(object):
         else:
             idx = self.taskid+1
         offset = dsize*idx
-        fhandle.Read_at_all(offset, stmp[self.nh[0]:, ...], status)
+        fhandle.Read_at_all(offset, temp[self.nh[0]:, ...], status)
 
         fhandle.Close()
 
         if self.byteswap:
-            var = stmp.byteswap(True).astype(dtype)
+            var = temp.byteswap(True).astype(dtype)
         else:
-            var = stmp.astype(dtype)
+            var = temp.astype(dtype)
         return var
 
 

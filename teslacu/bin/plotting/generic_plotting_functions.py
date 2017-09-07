@@ -423,9 +423,9 @@ def plot_tseries_histogram(data_dir, fig_dir, prefix, ttags, suffix,
 def plot_tseries_spectra(data_dir, fig_dir, prefix, ttags, suffix, nk,
                          title=None):
     ax[3].cla()
-    nr = len(ttags)
+    nt = len(ttags)
 
-    for k in range(nr):
+    for k in range(nt):
         fname = '%s/%s-%s_%s.spectra' % (data_dir, prefix, ttags[k], suffix)
 
         with open(fname) as fh:
@@ -437,7 +437,7 @@ def plot_tseries_spectra(data_dir, fig_dir, prefix, ttags, suffix, nk,
         ki = np.arange(1, nk, dtype=np.float64)
 
         try:
-            # spect[1:] /= spect[1:].sum()
+            spect[1:] *= (ki)**(5./3)/(1.2**(2./3)*(256)**6)
 
             kl, kc = np.argwhere(cycler == k % cycler.size)[0]
             ax[3].loglog(ki, spect[1:], label=ttags[k],
@@ -448,8 +448,9 @@ def plot_tseries_spectra(data_dir, fig_dir, prefix, ttags, suffix, nk,
 
     try:
         lims = ax[3].axis('tight')
-        ax[3].set_ylim([0.1*max(spect[10], lims[2]/2), lims[3]*2])
+        ax[3].set_ylim([0.1*max(spect[120], lims[2]), lims[3]*2])
         ax[3].set_xlim([lims[0]/2, lims[1]*2])
+        ax[3].plot([lims[0]/2, lims[1]*2], [1.6, 1.6], 'w:')
     except:
         pass
 
@@ -459,7 +460,8 @@ def plot_tseries_spectra(data_dir, fig_dir, prefix, ttags, suffix, nk,
     ax[3].tick_params(labelsize=fs1)
 
     ax[3].set_xlabel('$k$', fontsize=fs2)
-    ax[3].set_ylabel('$%s$' % sylab, fontsize=fs2)
+    ax[3].set_ylabel('$(k^{5/3}\epsilon^{-2/3})%s$'
+                     % sylab, fontsize=fs2)
 
     if title:
         ax[3].set_title(title, fontsize=fs2, x=0.01, y=1.00, loc='left')

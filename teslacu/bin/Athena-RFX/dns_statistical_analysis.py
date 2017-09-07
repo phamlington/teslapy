@@ -89,9 +89,10 @@ def dns_statistical_analysis(args):
     analyzer.tol = 1.0e-16
 
     psum = mpiAnalyzer.psum
-    MMIN = MPI.MIN
-    MMAX = MPI.MAX
-    MSUM = MPI.SUM
+    MIN = MPI.MIN
+    MAX = MPI.MAX
+    SUM = MPI.SUM
+    allreduce = comm.allreduce
 
     e = np.zeros((3, 3, 3))
     e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1
@@ -108,15 +109,13 @@ def dns_statistical_analysis(args):
     # Start first set of loops to determine ensemble and temporal mins, maxs,
     # and means
 
-    # tmin = np.zeros(31)
-    # tmax = np.zeros(31)
-    # tmean= np.zeros(53)
-
     for it in xrange(its, ite+1, tint):
         tstep = str(it).zfill(4)
 
         emin = np.empty(50)
         emax = np.empty(50)
+        emean= np.zeros(50)
+        emavg= np.zeros(50)
 
         emin[:] = np.inf
         emax[:] = np.NINF
@@ -132,156 +131,191 @@ def dns_statistical_analysis(args):
 
             iv = 0
 
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(rho), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(rho), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(rho), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(rho), op=MAX))
+            emean[iv]+=allreduce(psum(rho), op=SUM)
             iv+=1
 
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(u), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(u), op=MMAX))
+            # emin[iv] = min(emin[iv], allreduce(np.min(u), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(u), op=MAX))
+            # emean[iv]+=allreduce(psum(u), op=SUM)
 
             vm = np.sum(np.square(u), axis=0)
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(vm), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(vm), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(vm), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(vm), op=MAX))
+            emean[iv]+=allreduce(psum(vm), op=SUM)
             iv+=1
 
             vm *= 0.5*rho
             rekin = vm
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(rekin), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(rekin), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(rekin), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(rekin), op=MAX))
+            emean[iv]+=allreduce(psum(rekin), op=SUM)
+            emavg[iv-1] = 2.0*emean[iv]
             iv+=1
 
             # v = rho*u
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(v), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(v), op=MMAX))
+            # emin[iv] = min(emin[iv], allreduce(np.min(v), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(v), op=MAX))
+            # emean[iv]+=allreduce(psum(v), op=SUM)
             # iv+=1
 
             # v = np.sqrt(rho)*u
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(v), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(v), op=MMAX))
+            # emin[iv] = min(emin[iv], allreduce(np.min(v), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(v), op=MAX))
+            # emean[iv]+=allreduce(psum(v), op=SUM)
             # iv+=1
 
             re -= rekin
             re *= gamma-1
             P = re
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(P), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(P), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(P), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(P), op=MAX))
+            emean[iv]+=allreduce(psum(P), op=SUM)
             iv+=1
 
             T = P/(rho*R)
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(T), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(T), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(T), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(T), op=MAX))
+            emean[iv]+=allreduce(psum(T), op=SUM)
+            emavg[iv] = emean[iv-1]/R
             iv+=1
 
             c_s = np.sqrt(gamma*R*T)
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(c_s), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(c_s), op=MMAX))
-            # iv+=1
+            # emin[iv] = min(emin[iv], allreduce(np.min(c_s), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(c_s), op=MAX))
+            emean[iv]+=allreduce(psum(c_s), op=SUM)
+            iv+=1
 
             vm = np.sqrt(np.sum(np.square(u), axis=0))/c_s
             M = vm
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(M), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(M), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(M), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(M), op=MAX))
+            emean[iv]+=allreduce(psum(M), op=SUM)
+            emavg[iv]+=allreduce(psum(rho*M), op=SUM)
             iv+=1
 
             mu = tcoef*np.power(T, texp)
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(mu), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(mu), op=MMAX))
-            # iv+=1
+            # emin[iv] = min(emin[iv], allreduce(np.min(mu), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(mu), op=MAX))
+            emean[iv]+=allreduce(psum(mu), op=SUM)
+            emavg[iv]+=allreduce(psum(rho*mu), op=SUM)
+            iv+=1
 
             v = analyzer.scl_grad(T)
             gradT = v
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(gradT), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(gradT), op=MMAX))
+            # emin[iv] = min(emin[iv], allreduce(np.min(gradT), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(gradT), op=MAX))
+            # emean[iv]+=allreduce(psum(gradT), op=SUM)
             # iv+=1
 
             vm = np.sum(np.square(gradT), axis=0)
             dTdT = vm
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(dTdT), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(dTdT), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(dTdT), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(dTdT), op=MAX))
+            emean[iv]+=allreduce(psum(dTdT), op=SUM)
+            emavg[iv]+=allreduce(psum(rho*dTdT), op=SUM)
             iv+=1
 
             dTdT *= mu
             repsT = dTdT
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(repsT), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(repsT), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(repsT), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(repsT), op=MAX))
+            emean[iv]+=allreduce(psum(repsT), op=SUM)
             iv+=1
 
             A = analyzer.grad(u)
 
             v = np.einsum('ijk,jk...->i...', e, A)
             omga = v
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(omga), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(omga), op=MMAX))
+            # emin[iv] = min(emin[iv], allreduce(np.min(omga), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(omga), op=MAX))
+            # emean[iv]+=allreduce(psum(omga), op=SUM)
             # iv+=1
 
             vm = 0.5*np.sum(np.square(omga), axis=0)
             enst = vm
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(enst), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(enst), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(enst), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(enst), op=MAX))
+            emean[iv]+=allreduce(psum(enst), op=SUM)
+            emavg[iv]+=allreduce(psum(rho*enst), op=SUM)
             iv+=1
 
             A = 0.5*(A + np.rollaxis(A, 1))
             S = A
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(S), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(S), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(S), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(S), op=MAX))
             iv+=1
 
             Smm = np.einsum('ii...', S)
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(Smm), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(Smm), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(Smm), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(Smm), op=MAX))
+            emean[iv]+=allreduce(psum(Smm), op=SUM)
+            emavg[iv]+=allreduce(psum(rho*Smm), op=SUM)
             iv+=1
 
             dil2 = np.square(Smm)
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(dil2), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(dil2), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(dil2), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(dil2), op=MAX))
+            emean[iv]+=allreduce(psum(dil2), op=SUM)
+            emavg[iv]+=allreduce(psum(rho*dil2), op=SUM)
             iv+=1
 
             S2 = np.sum(np.square(S), axis=(0, 1)) - (1./3.)*dil2
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(S2), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(S2), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(S2), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(S2), op=MAX))
+            emean[iv]+=allreduce(psum(S2), op=SUM)
+            emavg[iv]+=allreduce(psum(rho*S2), op=SUM)
             iv+=1
 
             # divKu = rekin = analyzer.div(2.0*rekin*u)
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(divKu), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(divKu), op=MMAX))
+            # emin[iv] = min(emin[iv], allreduce(np.min(divKu), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(divKu), op=MAX))
+            # emean[iv]+=allreduce(psum(divKu), op=SUM)
             # iv+=1
             # RHS = divKu
             # RHS *= -1
 
             # divPu = vm = analyzer.div(P*u)
             # RHS -= divPu
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(divPu), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(divPu), op=MMAX))
+            # emin[iv] = min(emin[iv], allreduce(np.min(divPu), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(divPu), op=MAX))
+            # emean[iv]+=allreduce(psum(divPu), op=SUM)
             # iv+=1
 
             S2 *= 2.0*mu
             repss = S2
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(repss), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(repss), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(repss), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(repss), op=MAX))
+            emean[iv]+=allreduce(psum(repss), op=SUM)
             iv+=1
 
             dil2 *= mu
             repsd = dil2
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(repsd), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(repsd), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(repsd), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(repsd), op=MAX))
+            emean[iv]+=allreduce(psum(repsd), op=SUM)
             iv+=1
 
             # reps = vm = repsd + repss
             # RHS -= reps
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(reps), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(reps), op=MMAX))
+            # emin[iv] = min(emin[iv], allreduce(np.min(reps), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(reps), op=MAX))
+            # emean[iv]+=allreduce(psum(reps), op=SUM)
             # iv+=1
 
             vm = P*Smm
             Pdil = vm
             # RHS += Pdil
-            emin[iv] = min(emin[iv], comm.allreduce(np.min(Pdil), op=MMIN))
-            emax[iv] = max(emax[iv], comm.allreduce(np.max(Pdil), op=MMAX))
+            emin[iv] = min(emin[iv], allreduce(np.min(Pdil), op=MIN))
+            emax[iv] = max(emax[iv], allreduce(np.max(Pdil), op=MAX))
+            emean[iv]+=allreduce(psum(Pdil), op=SUM)
             iv+=1
 
             # # RHS
-            # emin[iv] = min(emin[iv], comm.allreduce(np.min(RHS), op=MMIN))
-            # emax[iv] = max(emax[iv], comm.allreduce(np.max(RHS), op=MMAX))
+            # emin[iv] = min(emin[iv], allreduce(np.min(RHS), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(RHS), op=MAX))
+            # emean[iv]+=allreduce(psum(RHS), op=SUM)
             # iv+=1
 
             comm.Barrier()
@@ -291,11 +325,9 @@ def dns_statistical_analysis(args):
 
             # -----------------------------------------------------------------
 
-        rhom = comm.allreduce(psum(rho), op=MSUM)/Ne
-
-        # for i in xrange(29):
-        #     tmin[i] = min(tmin[i], emin[i])
-        #     tmax[i] = max(tmax[i], emax[i])
+        emean /= Ne
+        rhom = emean[0]
+        emavg /= rhom*Ne
 
         # ---------------------------------------------------------------------
         # BEGIN ANALYSIS
@@ -320,23 +352,24 @@ def dns_statistical_analysis(args):
 
             iv = 0
 
-            scalar_analysis(analyzer, rho, (emin[iv], emax[iv]), None, None,
-                            'rho', 'density', '\\rho')
+            scalar_analysis(analyzer, rho, (emin[iv], emax[iv]), rhom,
+                            None, None, 'rho', 'density', '\\rho')
             iv+=1
 
             analyzer.spectral_density(u, 'u', 'velocity PSD', Ek_fmt('u_i'))
 
             vm = np.sum(np.square(u), axis=0)
-            scalar_analysis(analyzer, vm, (emin[iv], emax[iv]), None, None,
-                            'uiui', 'velocity squared', 'u_iu_i')
-            scalar_analysis(analyzer, vm, (emin[iv], emax[iv]),
-                            rho.copy(), rhom,
+            scalar_analysis(analyzer, vm, (emin[iv], emax[iv]), emean[iv],
+                            None, None, 'uiui', 'velocity squared', 'u_iu_i')
+            scalar_analysis(analyzer, vm, (emin[iv], emax[iv]), emavg[iv],
+                            rho, rhom,
                             'uiui_tilde', 'm.w. velocity squared', 'u_iu_i')
             iv+=1
 
             vm *= 0.5*rho
             rekin = vm
-            scalar_analysis(analyzer, rekin, (emin[iv], emax[iv]), None, None,
+            scalar_analysis(analyzer, rekin, (emin[iv], emax[iv]), emean[iv],
+                            None, None,
                             'rekin', 'kinetic energy', '\\rho u_iu_i/2')
             iv+=1
 
@@ -359,20 +392,21 @@ def dns_statistical_analysis(args):
             re *= gamma-1
             P = re
 
-            if P.min() < 0:
-                print (update(timeofday(), tstep, ir, comm.rank)
-                       +'\tP check: {} {}'.format(P.min(), P.max()))
+            # if P.min() < 0:
+            #     print (update(timeofday(), tstep, ir, comm.rank)
+            #            +'\tP check: {} {}'.format(P.min(), P.max()))
 
-            scalar_analysis(analyzer, P, (emin[iv], emax[iv]), None, None,
+            scalar_analysis(analyzer, P, (emin[iv], emax[iv]), emean[iv],
+                            None, None,
                             'P', 'pressure', 'P')
             iP = iv
             iv+=1
 
             T = P/(rho*R)
-            scalar_analysis(analyzer, T, (emin[iv], emax[iv]), None, None,
-                            'T', 'temperature', 'T')
-            scalar_analysis(analyzer, T, (emin[iv], emax[iv]), rho, rhom,
-                            'T_tilde', 'm.w. temperature', 'T')
+            scalar_analysis(analyzer, T, (emin[iv], emax[iv]), emean[iv],
+                            None, None, 'T', 'temperature', 'T')
+            scalar_analysis(analyzer, T, (emin[iv], emax[iv]), emavg[iv],
+                            rho, rhom, 'T_tilde', 'm.w. temperature', 'T')
             iT = iv
             iv+=1
 
@@ -393,23 +427,26 @@ def dns_statistical_analysis(args):
 
             c_s = np.sqrt(gamma*R*T)
             analyzer.write_mpi_moments(c_s, 'speed of sound', 'c_\\mathrm{s}',
-                                       None, None, m1=0)
+                                       None, None, emean[iv])
             analyzer.write_mpi_moments(c_s, 'm.w. speed of sound',
-                                       'c_\\mathrm{s}', rho, rhom, m1=0)
+                                       'c_\\mathrm{s}', rho, rhom, m1=0.0)
+            iv+=1
 
             vm = np.sqrt(np.sum(np.square(u), axis=0))/c_s
             M = vm
-            scalar_analysis(analyzer, M, (emin[iv], emax[iv]), None, None,
-                            'M', 'Mach number', '\mathrm{Ma}')
-            scalar_analysis(analyzer, M, (emin[iv], emax[iv]), rho, rhom,
+            scalar_analysis(analyzer, M, (emin[iv], emax[iv]), emean[iv],
+                            None, None, 'M', 'Mach number', '\mathrm{Ma}')
+            scalar_analysis(analyzer, M, (emin[iv], emax[iv]), 0.0,
+                            rho, rhom,
                             'M_tilde', 'm.w. Mach number', '\mathrm{Ma}')
             iv+=1
 
             mu = tcoef*np.power(T, texp)
             analyzer.write_mpi_moments(mu, 'viscosity', '\mu',
-                                       None, None, m1=0)
+                                       None, None, emean[iv])
             analyzer.write_mpi_moments(mu, 'm.w. viscosity', '\mu',
-                                       rho, rhom, m1=0)
+                                       rho, rhom, emavg[iv])
+            iv+=1
 
             # comm.Barrier()
             # if comm.rank % 64 == 0:
@@ -424,9 +461,11 @@ def dns_statistical_analysis(args):
 
             vm = np.sum(np.square(gradT), axis=0)
             dTdT = vm
-            scalar_analysis(analyzer, dTdT, (emin[iv], emax[iv]), None, None,
+            scalar_analysis(analyzer, dTdT, (emin[iv], emax[iv]), emean[iv],
+                            None, None,
                             'dTdT', 'temperature gradient squared', dTdTstr)
-            scalar_analysis(analyzer, dTdT, (emin[iv], emax[iv]), rho, rhom,
+            scalar_analysis(analyzer, dTdT, (emin[iv], emax[iv]), emavg[iv],
+                            rho, rhom,
                             'dTdT_tilde', 'm.w. temperature gradient squared',
                             dTdTstr)
             idT=iv
@@ -434,7 +473,8 @@ def dns_statistical_analysis(args):
 
             dTdT *= mu
             repsT = dTdT
-            scalar_analysis(analyzer, repsT, (emin[iv], emax[iv]), None, None,
+            scalar_analysis(analyzer, repsT, (emin[iv], emax[iv]), emean[iv],
+                            None, None,
                             'repsT', 'scalar dissipation', sclstr)
             iv+=1
 
@@ -466,9 +506,10 @@ def dns_statistical_analysis(args):
 
             vm = 0.5*np.sum(np.square(omga), axis=0)
             enst = vm
-            scalar_analysis(analyzer, enst, (emin[iv], emax[iv]), None, None,
-                            'enst', 'enstrophy', '\Omega')
-            scalar_analysis(analyzer, enst, (emin[iv], emax[iv]), rho, rhom,
+            scalar_analysis(analyzer, enst, (emin[iv], emax[iv]), emean[iv],
+                            None, None, 'enst', 'enstrophy', '\Omega')
+            scalar_analysis(analyzer, enst, (emin[iv], emax[iv]), emavg[iv],
+                            rho, rhom,
                             'enst_tilde', 'm.w. enstrophy', '\Omega')
             iOm=iv
             iv+=1
@@ -498,10 +539,10 @@ def dns_statistical_analysis(args):
 
             A = 0.5*(A + np.rollaxis(A, 1))
             S = A
-            gradient_analysis(analyzer, S, (emin[iv], emax[iv]), None, None,
-                              'S', 'strain rate', 'S')
-            gradient_analysis(analyzer, S, (emin[iv], emax[iv]), rho, rhom,
-                              'S_tilde', 'm.w. strain rate', 'S')
+            gradient_analysis(analyzer, S, (emin[iv], emax[iv]), 0.0,
+                              None, None, 'S', 'strain rate', 'S')
+            gradient_analysis(analyzer, S, (emin[iv], emax[iv]), 0.0,
+                              rho, rhom, 'S_tilde', 'm.w. strain rate', 'S')
             iv+=1
 
             comm.Barrier()
@@ -511,9 +552,10 @@ def dns_statistical_analysis(args):
             # -----------------------------------------------------------------
 
             Smm = np.einsum('ii...', S)
-            scalar_analysis(analyzer, Smm, (emin[iv], emax[iv]), None, None,
-                            'Smm', 'dilatation', '\Theta')
-            scalar_analysis(analyzer, Smm, (emin[iv], emax[iv]), rho, rhom,
+            scalar_analysis(analyzer, Smm, (emin[iv], emax[iv]), emean[iv],
+                            None, None, 'Smm', 'dilatation', '\Theta')
+            scalar_analysis(analyzer, Smm, (emin[iv], emax[iv]), emavg[iv],
+                            rho, rhom,
                             'Smm_tilde', 'm.w. dilatation', '\Theta')
             iD=iv
             iv+=1
@@ -536,9 +578,11 @@ def dns_statistical_analysis(args):
             #                         range1, range2)
 
             dil2 = np.square(Smm)
-            scalar_analysis(analyzer, dil2, (emin[iv], emax[iv]), None, None,
+            scalar_analysis(analyzer, dil2, (emin[iv], emax[iv]), emean[iv],
+                            None, None,
                             'dil2', 'dilatation squared', '\Theta^2')
-            scalar_analysis(analyzer, dil2, (emin[iv], emax[iv]), rho, rhom,
+            scalar_analysis(analyzer, dil2, (emin[iv], emax[iv]), emavg[iv],
+                            rho, rhom,
                             'dil2_tilde', 'm.w. dilatation squared',
                             '\Theta^2')
             iD2=iv
@@ -577,9 +621,11 @@ def dns_statistical_analysis(args):
             #                         '\Theta^2', dTdTstr, range1, range2)
 
             S2 = np.sum(np.square(S), axis=(0, 1)) - (1./3.)*dil2
-            scalar_analysis(analyzer, S2, (emin[iv], emax[iv]), None, None,
+            scalar_analysis(analyzer, S2, (emin[iv], emax[iv]), emean[iv],
+                            None, None,
                             'S2', 'traceless strain squared', "S_{tl}^2")
-            scalar_analysis(analyzer, S2, (emin[iv], emax[iv]), rho, rhom,
+            scalar_analysis(analyzer, S2, (emin[iv], emax[iv]), emavg[iv],
+                            rho, rhom,
                             'S2_tilde', 'm.w. traceless strain squared',
                             "S_{tl}^2")
             iS2=iv
@@ -624,8 +670,8 @@ def dns_statistical_analysis(args):
 
             S2 *= 2.0*mu
             repss = S2
-            scalar_analysis(analyzer, repss, (emin[iv], emax[iv]), None, None,
-                            'repss', 'sol. KE dissipation', sstr)
+            scalar_analysis(analyzer, repss, (emin[iv], emax[iv]), emean[iv],
+                            None, None, 'repss', 'sol. KE dissipation', sstr)
             iS=iv
             iv+=1
 
@@ -646,8 +692,8 @@ def dns_statistical_analysis(args):
 
             dil2 *= mu
             repsd = dil2
-            scalar_analysis(analyzer, repsd, (emin[iv], emax[iv]), None, None,
-                            'repsd', 'dil. KE dissipation', dstr)
+            scalar_analysis(analyzer, repsd, (emin[iv], emax[iv]), emean[iv],
+                            None, None, 'repsd', 'dil. KE dissipation', dstr)
             iD=iv
             iv+=1
 
@@ -690,7 +736,8 @@ def dns_statistical_analysis(args):
 
             vm = P*Smm
             Pdil = vm
-            scalar_analysis(analyzer, Pdil, (emin[iv], emax[iv]), None, None,
+            scalar_analysis(analyzer, Pdil, (emin[iv], emax[iv]), emean[iv],
+                            None, None,
                             'Pdil', 'pressure-dilatation', 'P\Theta')
             iPd=iv
             iv+=1
@@ -819,11 +866,6 @@ def dns_statistical_analysis(args):
         # ---------------------------------------------------------------------
 
     # -------------------------------------------------------------------------
-
-    # tmean /= nt
-
-    # for it in xrange(its, ite+1, tint):
-    #     tstep = str(it).zfill(4)
 
     if comm.rank == 0:
         print("Python MPI job `dns_statistical_analysis' finished at {}"

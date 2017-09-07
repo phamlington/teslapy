@@ -7,15 +7,14 @@ from generic_plotting_functions import *
 
 # ddate = '2017_07_29/'
 
-case = 'test_N64_K15_smooth'
-N = 64
+case = 'dns_N256_K120_spectral'
+N = 256
 nk = (N/2)+1
-ttags = ['%3.3d' % i for i in range(18, 200, 20)]
+ttags = ['%3.3d' % i for i in range(3, 4, 1)]
 
-data_dir = ('/Users/colin/workspace/scratch/spectralLES/'
-            'HIT_LES/%s' % case)
+data_dir = ('/Users/colin/Google Drive/workspace/data/HIT_DNS_N256/')
 fig_dir = ('/Users/colin/Google Drive/workspace/media/'
-           'spectralLES/HIT_LES/%s' % (time.strftime("%Y_%m_%d")))
+           'spectralLES/%s' % (time.strftime("%Y_%m_%d")))
 
 try:
     # os.makedirs('%s/pdfs/multirun' % fig_dir)
@@ -58,10 +57,10 @@ except OSError:
 
 # --------------
 
-spect_tags = ['u', 'omga']
+spect_tags = ['u']  # , 'omga']
 # ['u', 'v', 'Smm', 'T', 'P', 'rho', 'omga', 'gradT']
-spect_titles = ['Velocity PSD',
-                'Vorticity PSD']
+spect_titles = ['Velocity PSD',]
+#                'Vorticity PSD']
 # spect_titles = ['Velocity PSD',
 #                 'Kinetic Energy Spectrum',
 #                 'Dilatation PSD',
@@ -107,7 +106,7 @@ spect_titles = ['Velocity PSD',
 #                     data_dir, fig_dir, cases[c], ttags[c][0], rtags[c],
 #                     hist_tags[i], xlab=hist_xlabs[i], title=hist_titles[i])
 
-spec_dir = '%s/analysis' % data_dir
+spec_dir = data_dir
 for i in range(len(spect_tags)):
     plot_tseries_spectra(spec_dir, fig_dir, case, ttags, spect_tags[i], nk,
                          spect_titles[i])

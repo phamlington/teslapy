@@ -66,7 +66,6 @@ from .diff import akima as tcas     # Akima spline approximation functions
 __all__ = ['mpiAnalyzer']
 
 world_comm = MPI.COMM_WORLD
-# psum = tcstats.psum
 
 
 ###############################################################################
@@ -236,6 +235,9 @@ class mpiBaseAnalyzer(object):
 
     # Statistical Moments -----------------------------------------------------
 
+    def psum(self, data):
+        return tcstats.psum(data)
+
     def local_moments(self, data, w=None, wbar=None, N=None, unbias=True):
         """
         Returns the mean and 2nd-4th central moments of a memory-local
@@ -292,7 +294,7 @@ class mpiBaseAnalyzer(object):
 
         if self.comm.rank == 0:
             fh = open(self.mpi_moments_file, 'a')
-            fh.write(('{:s}\t{:s}\t%s\n' % '\t'.join(['{:.8e}']*6))
+            fh.write(('{:s}\n{:s}\t%s\n' % '\t'.join(['{:.8e}']*6))
                      .format(title, sym, m1, c2, c3, c4, gmin, gmax))
 
         return m1, c2, c3, c4, gmin, gmax
