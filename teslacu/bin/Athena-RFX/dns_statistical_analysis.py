@@ -37,6 +37,7 @@ import numpy as np
 import mpiAnalyzer
 import mpiReader
 from single_comm_functions import *
+from stats_mpi4py_numpy import psum
 import sys
 # import hashlib
 comm = MPI.COMM_WORLD
@@ -88,7 +89,6 @@ def dns_statistical_analysis(args):
     s.insert(0, 3)
     analyzer.tol = 1.0e-16
 
-    psum = mpiAnalyzer.psum
     MIN = MPI.MIN
     MAX = MPI.MAX
     SUM = MPI.SUM
@@ -199,17 +199,16 @@ def dns_statistical_analysis(args):
             # emin[iv] = min(emin[iv], allreduce(np.min(mu), op=MIN))
             # emax[iv] = max(emax[iv], allreduce(np.max(mu), op=MAX))
             emean[iv]+=allreduce(psum(mu), op=SUM)
-            emavg[iv]+=allreduce(psum(rho*mu), op=SUM)
             iv+=1
 
-            v = analyzer.scl_grad(T)
-            gradT = v
+            # v = analyzer.scl_grad(T)
+            # gradT = v
             # emin[iv] = min(emin[iv], allreduce(np.min(gradT), op=MIN))
             # emax[iv] = max(emax[iv], allreduce(np.max(gradT), op=MAX))
             # emean[iv]+=allreduce(psum(gradT), op=SUM)
             # iv+=1
 
-            vm = np.sum(np.square(gradT), axis=0)
+            vm = np.sum(np.square(analyzer.scl_grad(T)), axis=0)
             dTdT = vm
             emin[iv] = min(emin[iv], allreduce(np.min(dTdT), op=MIN))
             emax[iv] = max(emax[iv], allreduce(np.max(dTdT), op=MAX))
@@ -241,7 +240,7 @@ def dns_statistical_analysis(args):
             emavg[iv]+=allreduce(psum(rho*enst), op=SUM)
             iv+=1
 
-            A = 0.5*(A + np.rollaxis(A, 1))
+            A[:] = 0.5*(A + np.rollaxis(A, 1))
             S = A
             emin[iv] = min(emin[iv], allreduce(np.min(S), op=MIN))
             emax[iv] = max(emax[iv], allreduce(np.max(S), op=MAX))
@@ -336,14 +335,12 @@ def dns_statistical_analysis(args):
             analyzer.mpi_moments_file = '%s%s-%s_%s.moments' % (
                                         analyzer.odir, pid, tstep, str(ir))
             analyzer.prefix = '%s-%s_%s_' % (pid, tstep, str(ir))
-            analyzer.Nx = Ne
             if comm.rank == 0:
                 try:
                     os.remove(analyzer.mpi_moments_file)
                 except:
                     pass
 
-            u = np.empty(s, dtype=np.float64)
             rho = reader.get_variable(fmt(prefix[0], tstep, ir))
             u[0] = reader.get_variable(fmt(prefix[1], tstep, ir))
             u[1] = reader.get_variable(fmt(prefix[2], tstep, ir))

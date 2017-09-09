@@ -238,59 +238,20 @@ class mpiBaseAnalyzer(object):
     def psum(self, data):
         return tcstats.psum(data)
 
-    def local_moments(self, data, w=None, wbar=None, N=None, unbias=True):
-        """
-        Returns the mean and 2nd-4th central moments of a memory-local
-        numpy array as a list. Default behavior is to return unbiased
-        sample moments for 1st-3rd order and a partially-corrected
-        sample 4th central moment.
-        """
-        if N is None:
-            N = self.nnx.prod()
-
-        if w is None:
-            u1 = self.psum(data)/N
-            if unbias:
-                c2 = self.psum(np.power(data-u1, 2))/(N-1)
-                c3 = self.psum(np.power(data-u1, 3))*N/(N**2-3*N+2)
-                c4 = self.psum(np.power(data-u1, 4))*N**2/(N**3-4*N**2+5*N-1)
-                c4+= (3/(N**2-3*N+3)-6/(N-1))*c2**2
-            else:
-                c2 = self.psum(np.power(data-u1, 2))/N
-                c3 = self.psum(np.power(data-u1, 3))/N
-                c4 = self.psum(np.power(data-u1, 4))/N
-        else:
-            if wbar is None:
-                wbar = self.psum(w)/N
-
-            u1 = self.psum(w*data)/(N*wbar)
-            if unbias:
-                c2 = self.psum(w*np.power(data-u1, 2))/(wbar*(N-1))
-                c3 = self.psum(w*np.power(data-u1, 3))*N/((N**2-3*N+2)*wbar)
-                c4 = self.psum(w*np.power(data-u1, 4))*N**2
-                c4/= (N**3-4*N**2+5*N-1)*wbar
-                c4+= (3/(N**2-3*N+3)-6/(N-1))*c2**2
-            else:
-                c2 = self.psum(w*np.power(data-u1, 2))/(N*wbar)
-                c3 = self.psum(w*np.power(data-u1, 3))/(N*wbar)
-                c4 = self.psum(w*np.power(data-u1, 4))/(N*wbar)
-
-        return u1, c2, c3, c4
-
     def central_moments(self, data, w=None, wbar=None, m1=None, norm=1.0):
         """
         Computes global min, max, and 1st to 6th biased central moments of
         assigned spatial field. To get raw moments, simply pass in m1=0.
         """
         return tcstats.central_moments(
-                            self.comm, self.Nx*norm, data, w, wbar, m1)
+                                self.comm, self.Nx*norm, data, w, wbar, m1)
 
     def write_mpi_moments(self, data, title, sym, w=None, wbar=None,
                           m1=None, norm=1.0):
         """Compute min, max, mean, and 2nd-6th (biased) central
         moments for assigned spatial field"""
-        m1, c2, c3, c4, c5, c6, gmin, gmax = \
-            self.central_moments(data, w, wbar, m1, norm)
+        m1, c2, c3, c4, c5, c6, gmin, gmax = tcstats.central_moments(
+                            self.comm, self.Nx*norm, data, w, wbar, m1)
 
         if self.comm.rank == 0:
             fh = open(self.mpi_moments_file, 'a')

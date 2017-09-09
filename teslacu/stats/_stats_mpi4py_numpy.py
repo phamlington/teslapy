@@ -15,7 +15,11 @@ def psum(data):
     a 0D scalar value or 1D array.
     """
     psum = np.asarray(data)
-    for n in range(data.ndim):
+    if psum is data:
+        # if data is already an ndarray, then asarray makes no copy
+        # and in Python, this means psum and data are the same object
+        psum = data.copy()
+    for n in range(psum.ndim):
         psum.sort(axis=-1)
         psum = np.sum(psum, axis=-1)
     return psum
@@ -23,39 +27,37 @@ def psum(data):
 
 def central_moments(comm, N, data, w=None, wbar=None, m1=None):
     """
-    Computes global min, max, and 1st to 6th biased central moments of
-    MPI-decomposed data. To get raw moments, simply pass in m1=0.
+    Computes global min, max, and 1st to 6th central moments of
+    MPI-decomposed data.
+
+    To get raw moments, simply pass in m1=0.
+    To get weighted moments, bass in the weighting coefficients, w.
+    If you've already calculated the mean of w, save some computations and pass
+    it in as wbar.
     """
     gmin = comm.allreduce(np.nanmin(data), op=MPI.MIN)
     gmax = comm.allreduce(np.nanmax(data), op=MPI.MAX)
 
     if w is None:   # unweighted moments
-        # 1st raw moment
-        if m1 is None:
-            m1 = comm.allreduce(psum(data), op=MPI.SUM)/N
-        # 2nd-6th centered moments
-        cdata = data-m1
-        c2 = comm.allreduce(psum(np.power(cdata, 2)), op=MPI.SUM)/N
-        c3 = comm.allreduce(psum(np.power(cdata, 3)), op=MPI.SUM)/N
-        c4 = comm.allreduce(psum(np.power(cdata, 4)), op=MPI.SUM)/N
-        c5 = comm.allreduce(psum(np.power(cdata, 5)), op=MPI.SUM)/N
-        c6 = comm.allreduce(psum(np.power(cdata, 6)), op=MPI.SUM)/N
-
-    else:           # weighted moments
+        w = 1
+        wbar = 1
+    else:
         if wbar is None:
             wbar = comm.allreduce(psum(w), op=MPI.SUM)/N
 
-        N = N*wbar
-        # 1st raw moment
-        if m1 is None:
-            m1 = comm.allreduce(psum(w*data), op=MPI.SUM)/N
-        # 2nd-6th centered moments
-        cdata = data-m1
-        c2 = comm.allreduce(psum(w*np.power(cdata, 2)), op=MPI.SUM)/N
-        c3 = comm.allreduce(psum(w*np.power(cdata, 3)), op=MPI.SUM)/N
-        c4 = comm.allreduce(psum(w*np.power(cdata, 4)), op=MPI.SUM)/N
-        c5 = comm.allreduce(psum(w*np.power(cdata, 5)), op=MPI.SUM)/N
-        c6 = comm.allreduce(psum(w*np.power(cdata, 6)), op=MPI.SUM)/N
+    N = N*wbar
+
+    # 1st raw moment
+    if m1 is None:
+        m1 = comm.allreduce(psum(w*data), op=MPI.SUM)/N
+
+    # 2nd-6th centered moments
+    cdata = data-m1
+    c2 = comm.allreduce(psum(w*np.power(cdata, 2)), op=MPI.SUM)/N
+    c3 = comm.allreduce(psum(w*np.power(cdata, 3)), op=MPI.SUM)/N
+    c4 = comm.allreduce(psum(w*np.power(cdata, 4)), op=MPI.SUM)/N
+    c5 = comm.allreduce(psum(w*np.power(cdata, 5)), op=MPI.SUM)/N
+    c6 = comm.allreduce(psum(w*np.power(cdata, 6)), op=MPI.SUM)/N
 
     return m1, c2, c3, c4, c5, c6, gmin, gmax
 
@@ -66,25 +68,20 @@ def histogram1(comm, N, data, range=None, bins=50, w=None, wbar=None, m1=None):
     decomposed data.
     """
 
-    # is_finite = np.all(np.isfinite(data))
-    # is_finite = comm.allreduce(is_finite, op=MPI.LAND)
-    # if not is_finite:
-    #     if comm.rank == 0:
-    #         raise ValueError('Histogram data contains non-finite values!')
-    #     MPI.Finalize()
-    #     sys.exit(999)
+    if w is None:   # unweighted moments
+        w = 1
+        wbar = 1
+    elif wbar is None:
+        wbar = comm.allreduce(psum(w), op=MPI.SUM)/N
 
-    if w is None:
-        if m1 is None:
-            m1 = comm.allreduce(psum(data), op=MPI.SUM)/N
-        m2 = comm.allreduce(psum(np.power(data, 2)), op=MPI.SUM)/N
-    else:
-        if wbar is None:
-            wbar = comm.allreduce(psum(w), op=MPI.SUM)/N
-        N = N*wbar
-        if m1 is None:
-            m1 = comm.allreduce(psum(w*data), op=MPI.SUM)/N
-        m2 = comm.allreduce(psum(w*np.power(data, 2)), op=MPI.SUM)/N
+    N = N*wbar
+
+    # 1st raw moment
+    if m1 is None:
+        m1 = comm.allreduce(psum(w*data), op=MPI.SUM)/N
+
+    # 2nd raw moment
+    m2 = comm.allreduce(psum(w*np.power(data, 2)), op=MPI.SUM)/N
 
     if range is None:
         gmin = comm.allreduce(np.nanmin(data), op=MPI.MIN)
@@ -148,3 +145,41 @@ def histogram2(comm, var1, var2, xrange=None, yrange=None, bins=50, w=None):
     hist *= 1.0/hist.sum()  # makes this a probability mass function
 
     return hist, gmin1, gmax1, width1, gmin2, gmax2, width2
+
+
+# def alt_local_moments(data, w=None, wbar=None, N=None, unbias=True):
+#     """
+#     Returns the mean and 2nd-4th central moments of a memory-local
+#     numpy array as a list. Default behavior is to return unbiased
+#     sample moments for 1st-3rd order and a partially-corrected
+#     sample 4th central moment.
+#     """
+
+#     if w is None:
+#         u1 = psum(data)/N
+#         if unbias:
+#             c2 = psum(np.power(data-u1, 2))/(N-1)
+#             c3 = psum(np.power(data-u1, 3))*N/(N**2-3*N+2)
+#             c4 = psum(np.power(data-u1, 4))*N**2/(N**3-4*N**2+5*N-1)
+#             c4+= (3/(N**2-3*N+3)-6/(N-1))*c2**2
+#         else:
+#             c2 = psum(np.power(data-u1, 2))/N
+#             c3 = psum(np.power(data-u1, 3))/N
+#             c4 = psum(np.power(data-u1, 4))/N
+#     else:
+#         if wbar is None:
+#             wbar = psum(w)/N
+
+#         u1 = psum(w*data)/(N*wbar)
+#         if unbias:
+#             c2 = psum(w*np.power(data-u1, 2))/(wbar*(N-1))
+#             c3 = psum(w*np.power(data-u1, 3))*N/((N**2-3*N+2)*wbar)
+#             c4 = psum(w*np.power(data-u1, 4))*N**2
+#             c4/= (N**3-4*N**2+5*N-1)*wbar
+#             c4+= (3/(N**2-3*N+3)-6/(N-1))*c2**2
+#         else:
+#             c2 = psum(w*np.power(data-u1, 2))/(N*wbar)
+#             c3 = psum(w*np.power(data-u1, 3))/(N*wbar)
+#             c4 = psum(w*np.power(data-u1, 4))/(N*wbar)
+
+#     return u1, c2, c3, c4
