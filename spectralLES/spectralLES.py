@@ -1,5 +1,6 @@
 """
-module spectralLES
+spectralLES: a pure-Python pseudo-spectral large eddy simulation solver
+for model testing and development.
 
 Description:
 ============
@@ -9,35 +10,55 @@ Notes:
 
 Indexing convention:
 --------------------
-Since TESLa has mostly worked in MATLAB and Fortran, it is common for us to
-think in terms of column-major index order, i.e., [x1, x2, x3], where x1 is
-contiguous in memory and x3 is always the inhomogenous dimension in the
-Athena-RFX flame geometry.
+Since TESLa has mostly worked in MATLAB and Fortran, it is common for us
+to think in terms of column-major index order, i.e., [x1, x2, x3], where
+x1 is contiguous in memory and x3 is always the inhomogenous dimension
+in the Athena-RFX flame geometry.
 However, Python and C/C++ are natively row-major index order, i.e.
 [x3, x2, x1], where x1 remains contiguous in memory and x3 remains the
 inhomogenous dimension.
 
-The TESLaCU package adheres to row-major order for indexing data grids and when
-indexing variables associated with the grid dimensions (e.g. nx, ixs, etc.),
-however all vector fields retain standard Einstein notation indexing order,
-(e.g. u[0] == u1, u[1] == u2, u[2] == u3).
+The TESLaCU package adheres to row-major order for indexing data grids
+and when indexing variables associated with the grid dimensions (e.g.
+nx, ixs, etc.), however all vector fields retain standard Einstein
+notation indexing order, (e.g. u[0] == u1, u[1] == u2, u[2] == u3).
 
 Coding Style Guide:
 -------------------
-This module generally adheres to the Python style guide published in PEP 8,
-with the following notable exceptions:
-- Warning W503 (line break occurred before a binary operator) is ignored
-- Error E129 (visually indented line with same indent as next logical line)
-  is ignored
-- Error E225 (missing whitespace around operator) is ignored
+This module generally adheres to the Python style guide published in
+PEP 8, with the following exceptions:
+- Warning W503 (line break occurred before a binary operator) is
+  ignored, since this warning is backwards and PEP 8 actually recommends
+  breaking before operators rather than after
+- Error E225 (missing whitespace around operator) is ignored because
+  sometimes breaking this rule produces more readable code.
 
 For more information see <http://pep8.readthedocs.org/en/latest/intro.html>
 
+Additionally, I have not yet, but plan to eventually get all of these
+docstrings whipped into shape and in compliance with the Numpy/Scipy
+style guide for documentation:
+<https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>
+
+Finally, this module should always strive to achieve enlightenment by
+following the the Zen of Python (PEP 20, just `import this` in a Python
+shell) and using idiomatic Python (i.e. 'Pythonic') concepts and design
+patterns.
+
+Of note, here: this module might violate the Zen of Python, because the
+spectralLES class _implicitly_ requires that mpi4py be imported by the
+__main__ function. It only explicitly tests to ensure that the argument
+`comm` has certain attributes which are required inside the class.
+I'm still learning how to keep namespaces clean while enforcing package
+dependencies, and since I don't actually use the MPI module anywhere,
+I felt it shouldn't be imported into this namespace.
+
+
 Definitions:
 ============
-self.K - wavevector - the Fourier-space spatial-frequency vector,
+K     - wavevector - the Fourier-space spatial-frequency vector,
                           K = [k3, k2, k1].
-kmag   - wavenumber - the wavevector magnitude, k = |kvec|
+kmag  - wavenumber - the wavevector magnitude, k = |kvec|
 
 Authors:
 ========
@@ -48,20 +69,31 @@ Department of Mechanical Engineering
 University of Colorado Boulder
 http://tesla.colorado.edu
 """
-
-from mpi4py import MPI
 import numpy as np
 from math import *
 
-from teslacu.fft import rfft3, irfft3               # FFT transforms
-from teslacu.stats import psum, central_moments     # statistical functions
-
-world_comm = MPI.COMM_WORLD
+from teslacu.fft import rfft3, irfft3            # FFT transforms
+from teslacu.stats import psum  # , central_moments  # statistical functions
 
 
 class spectralLES(object):
     def __init__(self, comm, L, nx, nu, Gtype='spectral', les_scale=None,
                  test_scale=None, eps_inj=None):
+
+        # test if argument `comm` is an mpi4py.MPI.Comm object without
+        # loading MPI into the namespace
+        try:
+            # these are the 2 properties that spectralLES uses directly
+            getattr(comm, 'rank')
+            getattr(comm, 'size')
+            # this is a critical method that spectralLES uses directly
+            getattr(comm, 'allreduce')
+            # this is a critical method that teslacu.fft functions use
+            getattr(comm, 'Alltoall')
+        except AttributeError as e:
+            print("Error: The first argument in the spectralLES __init__ "
+                  "function must be an instance of the mpi4py.MPI.Comm class!")
+            raise e
 
         self.comm = comm
 
@@ -120,13 +152,15 @@ class spectralLES(object):
         self.ike = self.iks+self.nnk
 
         # !WARNING!
-        # these following wavevectors and wavenumbers are in units of dki,
-        # and each dki can be different, such that equal integer values of ki
-        # do not correspond to equal dimensionalized spatial frequencies.
-        # I kept K as integer values to match the results of
-        # spectralDNS32_short.py, for now.
-        # This will give incorrect derivatives for domains that are not
-        # homogeneous with L = 2*pi! (Leray-Hopf projection is unaffected)
+        # these following wavevectors and wavenumbers are in units of
+        # dk_i, and each dk_i can be different, such that equal integer
+        # values of ki do not correspond to equal dimensionalized
+        # spatial frequencies. I kept K as integer values to match the
+        # results of spectralDNS32_short.py for the time being.
+        # This will give incorrect derivatives for domains with outer
+        # dimensions L_i /= 2pi, which would make dk_i = 2pi/L_i /= 1!
+        # However, Leray-Hopf/Helmholtz/Hodge projection is unnaffected
+        # by the magnitudes of dk_i
         k1 = np.fft.rfftfreq(self.nx[2])*self.nx[2]
         k2 = np.fft.fftfreq(self.nx[1])*self.nx[1]
         k2 = k2[self.iks[1]:self.ike[1]].copy()
@@ -153,7 +187,7 @@ class spectralLES(object):
         self.test_filter = self.filter_kernel(self.test_scale, Gtype)
 
         self.forcing_filter = np.ones_like(self.test_filter)
-        self.forcing_rate = eps_inj
+        self.epsilon = eps_inj
 
         Ck = 1.6
         Cs = sqrt((pi**-2)*((3*Ck)**-1.5))  # == 0.098...
@@ -168,7 +202,7 @@ class spectralLES(object):
         nz, nny, nk = self.nnk
 
         self.U = np.empty((3, nnz, ny, nx))     # solution vector
-        self.omga = np.empty_like(self.U)       # vorticity and vector memory
+        self.omega = np.empty_like(self.U)       # vorticity and vector memory
         self.A = np.empty((3, 3, nnz, ny, nx))  # Tensor memory
         # P = np.empty((nnz, ny, nx))
 
@@ -195,10 +229,10 @@ class spectralLES(object):
         """
         kf    - input cutoff wavenumber for ensured isotropic filtering
         Gtype - (Default='comp_exp') filter kernel type
-        k_kf  - (Default=None) spectral-space wavenumber field pre-normalized
-                by filter cutoff wavenumber. Pass this into
-                filter_kernel(), for anisotropic filtering, since this kernel
-                computes isotropic filter kernels by default.
+        k_kf  - (Default=None) spectral-space wavenumber field pre-
+                normalized by filter cutoff wavenumber. Pass this into
+                filter_kernel(), for anisotropic filtering, since this
+                kernel computes isotropic filter kernels by default.
                 If not None, kf is ignored.
         """
         if k_kf is None:
@@ -213,14 +247,12 @@ class spectralLES(object):
             Ghat[:] = np.sin(pi*k_kf)/(pi*k_kf**2)
 
         elif Gtype == 'comp_exp':
-            """
-            A 'COMPact EXPonential' filter which:
-                1) has compact support in a ball of spectral (physical) radius
-                   kf (2/kf)
-                2) is strictly positive, and
-                3) is smooth (infinitely differentiable)
-            in _both_ physical and spectral space!
-            """
+            # A 'COMPact EXPonential' filter which:
+            #    1) has compact support in a ball of spectral (physical)
+            #       radius kf (1/kf)
+            #    2) is strictly positive, and
+            #    3) is smooth (infinitely differentiable)
+            # in _both_ physical and spectral space!
             Ghat[:] = np.where(k_kf < 0.5,
                                np.exp(-k_kf**2/(0.25-k_kf**2)),
                                0.0).astype(dtype)
@@ -231,11 +263,9 @@ class spectralLES(object):
             Ghat -= 1j*np.imag(Ghat)
 
             # elif Gtype == 'inv_comp_exp':
-            #     """
-            #     Same as 'comp_exp' but the physical-space and spectral-space
-            #     kernels are swapped so that the physical-space kernel has
-            #     only a central lobe of support.
-            #     """
+            #     # Same as 'comp_exp' but the physical-space and spectral-
+            #     # space kernels are swapped so that the physical-space kernel
+            #     # has only a central lobe of support.
             #     H = np.exp(-r_rf**2/(1.0-r_rf**2))
             #     G = np.where(r_rf < 1.0, H, 0.0)
             #     rfft3(self.comm, G, Ghat)
@@ -268,8 +298,8 @@ class spectralLES(object):
 
     def get_random_HIT_spectrum(self, k_exp, k_peak, rseed=None):
         """
-        Generates a random, incompressible, velocity field with an unnormalized
-        Gamie-Ostriker isotropic turbulence spectrum
+        Generates a random, incompressible, velocity field with an
+        un-scaled Gamie-Ostriker isotropic turbulence spectrum
         """
         if type(rseed) is int and rseed > 0:
             np.random.seed(rseed)
@@ -298,8 +328,8 @@ class spectralLES(object):
 
     def Initialize_HIT_random_spectrum(self, Urms, k_exp, k_peak, rseed=None):
         """
-        Generates a random, incompressible, velocity initial condition with a
-        Gamie-Ostriker isotropic turbulence spectrum
+        Generates a random, incompressible, velocity initial condition
+        with a scaled Gamie-Ostriker isotropic turbulence spectrum
         """
         self.get_random_HIT_spectrum(k_exp, k_peak, rseed)
 
@@ -329,11 +359,11 @@ class spectralLES(object):
         self.get_random_HIT_spectrum(-5./3., self.nk[-1], rseed)
         self.S_hat *= self.forcing_filter
 
-        self.omga[0] = irfft3(self.comm, self.S_hat[0])
-        self.omga[1] = irfft3(self.comm, self.S_hat[1])
-        self.omga[2] = irfft3(self.comm, self.S_hat[2])
-        dvScale = self.forcing_rate/(self.comm.allreduce(
-                                     psum(self.omga*self.U))*self.dx.prod())
+        self.omega[0] = irfft3(self.comm, self.S_hat[0])
+        self.omega[1] = irfft3(self.comm, self.S_hat[1])
+        self.omega[2] = irfft3(self.comm, self.S_hat[2])
+        dvScale = self.epsilon/(self.comm.allreduce(
+                                     psum(self.omega*self.U))*self.dx.prod())
         self.dU += dvScale*self.S_hat
 
         # if self.comm.rank == 0:
@@ -346,23 +376,23 @@ class spectralLES(object):
         Source function to be added to spectralLES solver instance
         all **kwargs are ignored
         """
-        # Update the HIT forcing function, use omga as vector memory
+        # Update the HIT forcing function, use omega as vector memory
         self.S_hat[:] = self.U_hat*self.forcing_filter
-        self.omga[0] = irfft3(self.comm, self.S_hat[0])
-        self.omga[1] = irfft3(self.comm, self.S_hat[1])
-        self.omga[2] = irfft3(self.comm, self.S_hat[2])
-        dvScale = self.forcing_rate/(self.comm.allreduce(
-                                     psum(self.omga*self.U))*self.dx.prod())
+        self.omega[0] = irfft3(self.comm, self.S_hat[0])
+        self.omega[1] = irfft3(self.comm, self.S_hat[1])
+        self.omega[2] = irfft3(self.comm, self.S_hat[2])
+        dvScale = self.epsilon/(self.comm.allreduce(
+                                     psum(self.omega*self.U))*self.dx.prod())
         self.S_hat *= dvScale
         self.dU += self.S_hat
 
-        # self.omga[0] = irfft3(self.comm, self.S_hat[0])
-        # self.omga[1] = irfft3(self.comm, self.S_hat[1])
-        # self.omga[2] = irfft3(self.comm, self.S_hat[2])
+        # self.omega[0] = irfft3(self.comm, self.S_hat[0])
+        # self.omega[1] = irfft3(self.comm, self.S_hat[1])
+        # self.omega[2] = irfft3(self.comm, self.S_hat[2])
         # eps_inj = 0.5*psum(self.S_hat*np.conj(self.U_hat)
         #                    +np.conj(self.S_hat)*self.U_hat)
         # eps_inj = self.comm.allreduce(eps_inj)
-        # eps_ratio = eps_inj/self.forcing_rate
+        # eps_ratio = eps_inj/self.epsilon
         # if self.comm.rank == 0:
         #     print("---- inj_ratio = %15.8f ----" % eps_ratio)
 
@@ -371,10 +401,10 @@ class spectralLES(object):
     def computeSource_Smagorinksy_SGS(self, **kwargs):
         """
         Standard Smagorinsky model (fixed C_s for now)
-        Note that self.A is the generic Tensor memory space, with the letter
-        S reserved for 'Source', as in self.S_hat.
-        all **kwargs are ignored for now, but you could pass in a user-defined
-        Cs here, or some other kinds of parameters.
+        Note that self.A is the generic Tensor memory space, with the
+        letter S reserved for 'Source', as in self.S_hat.
+        all **kwargs are ignored for now, but you could pass in a user-
+        defined Cs here, or some other kinds of parameters.
         """
         for i in range(3):
             for j in range(3):
@@ -382,32 +412,32 @@ class spectralLES(object):
                                           1j*(self.K[2-j]*self.U_hat[i]
                                               +self.K[2-i]*self.U_hat[j]))
 
-        # compute SGS flux tensor, nuT = 2|S|(Cs*D)**2 uses omga as
+        # compute SGS flux tensor, nuT = 2|S|(Cs*D)**2 uses omega as
         # working memory
-        self.omga[0] = np.sqrt(2.0*np.sum(np.square(self.A), axis=(0, 1)))
-        self.omga[0]*= self.smag_coef  # self.omga[0] == 2*nu_T
+        self.omega[0] = np.sqrt(2.0*np.sum(np.square(self.A), axis=(0, 1)))
+        self.omega[0]*= self.smag_coef  # self.omega[0] == 2*nu_T
 
         # m1, c2, c3, c4, c5, c6, gmin, gmax = \
-        #     central_moments(self.comm, self.Nx, self.omga[0])
+        #     central_moments(self.comm, self.Nx, self.omega[0])
         # if self.comm.rank == 0:
         #     print("---- nu_T moments: mean = %8.4f\tvar = %8.4f\t"
         #           "min = %8.4f\tmax = %8.4f" % (m1, c2, gmin, gmax))
 
-        self.nuTmax = self.comm.allreduce(np.max(self.omga[0]), op=MPI.MAX)
+        self.nuTmax = self.comm.allreduce(np.max(self.omega[0]), op=MPI.MAX)
 
         self.S_hat[:] = 0.0
         for i in range(3):
             for j in range(3):
-                self.S_hat[i]+= 1j*self.K[2-j]*rfft3(self.comm,
-                                                     self.A[j, i]*self.omga[0])
+                self.S_hat[i]+= 1j*self.K[2-j]*rfft3(
+                                        self.comm, self.A[j, i]*self.omega[0])
         self.dU += self.S_hat
 
-        # self.omga[0] = irfft3(self.comm, self.S_hat[0])
-        # self.omga[1] = irfft3(self.comm, self.S_hat[1])
-        # self.omga[2] = irfft3(self.comm, self.S_hat[2])
+        # self.omega[0] = irfft3(self.comm, self.S_hat[0])
+        # self.omega[1] = irfft3(self.comm, self.S_hat[1])
+        # self.omega[2] = irfft3(self.comm, self.S_hat[2])
 
-        # eps_ratio = self.forcing_rate/(self.comm.allreduce(
-        #                                psum(self.omga*self.U))*self.dx.prod())
+        # eps_ratio = self.epsilon/(self.comm.allreduce(
+        #                            psum(self.omega*self.U))*self.dx.prod())
         # if self.comm.rank == 0:
         #     print("---- SGS_ratio = %15.8f ----" % eps_ratio)
 
@@ -415,29 +445,29 @@ class spectralLES(object):
 
     def computeAD_vorticity_formulation(self, **kwargs):
         """
-        Computes right-hand-side (RHS) advection and diffusion (AD) terms of
-        the incompressible Navier-Stokes equations using a
+        Computes right-hand-side (RHS) advection and diffusion (AD)
+        terms of the incompressible Navier-Stokes equations using a
         vorticity formulation of the advection term.
         """
 
         # take curl of velocity to get vorticity and inverse transform
-        self.omga[2] = irfft3(self.comm,
-                              1j*(self.K[0]*self.U_hat[1]
-                                  -self.K[1]*self.U_hat[0]))
-        self.omga[1] = irfft3(self.comm,
-                              1j*(self.K[2]*self.U_hat[0]
-                                  -self.K[0]*self.U_hat[2]))
-        self.omga[0] = irfft3(self.comm,
-                              1j*(self.K[1]*self.U_hat[2]
-                                  -self.K[2]*self.U_hat[1]))
+        self.omega[2] = irfft3(self.comm,
+                               1j*(self.K[0]*self.U_hat[1]
+                                   -self.K[1]*self.U_hat[0]))
+        self.omega[1] = irfft3(self.comm,
+                               1j*(self.K[2]*self.U_hat[0]
+                                   -self.K[0]*self.U_hat[2]))
+        self.omega[0] = irfft3(self.comm,
+                               1j*(self.K[1]*self.U_hat[2]
+                                   -self.K[2]*self.U_hat[1]))
 
         # compute convective transport as the physical-space cross-product of
         # vorticity and velocity and forward transform
-        rfft3(self.comm, self.U[1]*self.omga[2]-self.U[2]*self.omga[1],
+        rfft3(self.comm, self.U[1]*self.omega[2]-self.U[2]*self.omega[1],
               self.dU[0])
-        rfft3(self.comm, self.U[2]*self.omga[0]-self.U[0]*self.omga[2],
+        rfft3(self.comm, self.U[2]*self.omega[0]-self.U[0]*self.omega[2],
               self.dU[1])
-        rfft3(self.comm, self.U[0]*self.omga[1]-self.U[1]*self.omga[0],
+        rfft3(self.comm, self.U[0]*self.omega[1]-self.U[1]*self.omega[0],
               self.dU[2])
 
         # Compute the diffusive transport term and add to the LH-projected
@@ -465,28 +495,28 @@ class spectralLES(object):
 
     def RK4_integrate(self, dt, *Sources, **kwargs):
         """
-        Nth order Runge-Kutta time integrator for spectralLES
-        Olga/Peter: I didn't really pay attention to the paper, is this
-                    actually 4th order, or is it only 3rd order?
+        4th order Runge-Kutta time integrator for spectralLES
 
         Arguments:
         ----------
-        dt            - current timestep
-        *Sources      - (Optional) User-supplied source terms. This is a
-                        special Python syntax, basically any argument you
-                        feed RK4_integrate() after dt will be stored in the
-                        list Source_terms. If no arguments are given,
-                        Source_terms = [], and Python will accept the null
-                        list ([]) in it's for loops, in which case the
-                        loop region is skipped. This is equivalent to
-                        pre-bundling function handles into a list and then
-                        explicitly requiring a list as the second argument.
-        **kwargs      - (Optional) the keyword arguments to be passed to all
-                        Sources.
-        Note: The source terms Colin coded accept any number of extra arguments
-        and ignore them, that way if you need to pass a computeSource()
-        function an argument each call, those source terms are forwards
-        compatible with the change inside the Source loop.
+        dt        - current timestep
+        *Sources  - (Optional) User-supplied source terms. This is a
+                    special Python syntax, basically any argument you
+                    feed RK4_integrate() after dt will be stored in the
+                    list Source_terms. If no arguments are given,
+                    Source_terms = [], and Python will accept the null
+                    list ([]) in it's for loops, in which case the
+                    loop region is skipped. This is equivalent to
+                    pre-bundling function handles into a list and then
+                    explicitly requiring a list as the second argument.
+        **kwargs  - (Optional) the keyword arguments to be passed to all
+                    Sources.
+
+        Note: The source terms Colin coded accept any number of extra
+        arguments and ignore them, that way if you need to pass a
+        computeSource() function an argument each call, those source
+        terms are forwards compatible with the change inside the Source
+        loop.
         """
 
         a = [1./6., 1./3., 1./3., 1./6.]
@@ -507,12 +537,12 @@ class spectralLES(object):
             # Filter the nonlinear contributions to the RHS
             self.dU *= self.les_filter
 
-            # Apply the Leray-Hopf projection operator (1 - Helmholtz operator)
-            # to filtered nonlinear contributions in order to enforce the
-            # divergence-free continuity condition.
-            # This operation is equivalent to computing the pressure field
-            # using a physical-space pressure-Poisson solver and then adding
-            # the pressure-gradient transport term to the RHS.
+            # Apply the Leray-Hopf projection operator (1 - Helmholtz
+            # operator) to filtered nonlinear contributions in order to
+            # enforce the divergence-free continuity condition.
+            # This operation is equivalent to computing the pressure
+            # field using a physical-space pressure-Poisson solver and
+            # then adding the pressure-gradient transport term to the RHS.
             self.dU -= np.sum(self.dU*self.K_Ksq, axis=0)*self.K
 
             if rk < 3:

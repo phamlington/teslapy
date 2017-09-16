@@ -226,13 +226,13 @@ def dns_statistical_analysis(args):
             A = analyzer.grad(u)
 
             v = np.einsum('ijk,jk...->i...', e, A)
-            omga = v
-            # emin[iv] = min(emin[iv], allreduce(np.min(omga), op=MIN))
-            # emax[iv] = max(emax[iv], allreduce(np.max(omga), op=MAX))
-            # emean[iv]+=allreduce(psum(omga), op=SUM)
+            omega = v
+            # emin[iv] = min(emin[iv], allreduce(np.min(omega), op=MIN))
+            # emax[iv] = max(emax[iv], allreduce(np.max(omega), op=MAX))
+            # emean[iv]+=allreduce(psum(omega), op=SUM)
             # iv+=1
 
-            vm = 0.5*np.sum(np.square(omga), axis=0)
+            vm = 0.5*np.sum(np.square(omega), axis=0)
             enst = vm
             emin[iv] = min(emin[iv], allreduce(np.min(enst), op=MIN))
             emax[iv] = max(emax[iv], allreduce(np.max(enst), op=MAX))
@@ -497,11 +497,11 @@ def dns_statistical_analysis(args):
             # -----------------------------------------------------------------
 
             v = np.einsum('ijk,jk...->i...', e, A)
-            omga = v
-            analyzer.spectral_density(omga, 'omga', 'vorticity PSD',
+            omega = v
+            analyzer.spectral_density(omega, 'omega', 'vorticity PSD',
                                       Ek_fmt('\omega_i'))
 
-            vm = 0.5*np.sum(np.square(omga), axis=0)
+            vm = 0.5*np.sum(np.square(omega), axis=0)
             enst = vm
             scalar_analysis(analyzer, enst, (emin[iv], emax[iv]), emean[iv],
                             None, None, 'enst', 'enstrophy', '\Omega')

@@ -14,11 +14,7 @@ def psum(data):
     input argument data can be any n-dimensional array-like object, including
     a 0D scalar value or 1D array.
     """
-    psum = np.asarray(data)
-    if psum is data:
-        # if data is already an ndarray, then asarray makes no copy
-        # and in Python, this means psum and data are the same object
-        psum = data.copy()
+    psum = np.array(data)
     for n in range(psum.ndim):
         psum.sort(axis=-1)
         psum = np.sum(psum, axis=-1)

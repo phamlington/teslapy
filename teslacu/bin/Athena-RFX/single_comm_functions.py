@@ -221,7 +221,7 @@ def scalar_analysis(mA, phi, minmax, m1, w, wbar, fname, title, symb):
     #            % hashlib.md5(phi).hexdigest()))
 
     if fname in ['rho', 'P', 'T', 'Smm', 'Y']:
-        mA.spectral_density(phi.copy(), fname, title+' PSD', Ek_fmt(symb))
+        mA.spectral_density(phi, fname, title+' PSD', Ek_fmt(symb))
 
     # if mA.comm.rank % 8 == 0:
     #     print (update(mA.comm.rank, '\tphi post-PSD: %s'

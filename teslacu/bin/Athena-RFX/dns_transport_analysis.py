@@ -159,7 +159,7 @@ def physical_transport_analysis(args):
             e = np.zeros((3, 3, 3))
             e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1
             e[0, 2, 1] = e[2, 1, 0] = e[1, 0, 2] = -1
-            omga = np.einsum('ijk,jk...->i...', e, A)
+            omega = np.einsum('ijk,jk...->i...', e, A)
 
             divKu = analyzer.div(0.5*rho*np.sum(np.square(u), axis=0)*u)
             RHS = -divKu
@@ -206,7 +206,7 @@ def physical_transport_analysis(args):
             emax[iv] = max(emax[iv], comm.allreduce(np.max(RHS), op=MMAX))
             emean[iv]+= comm.allreduce(psum(RHS), op=MSUM)
 
-            vm = mu*np.sum(np.square(omga), axis=0)
+            vm = mu*np.sum(np.square(omega), axis=0)
             emin[iv] = min(emin[iv], comm.allreduce(np.min(vm), op=MMIN))
             emax[iv] = max(emax[iv], comm.allreduce(np.max(vm), op=MMAX))
             emean[iv]+= comm.allreduce(psum(vm), op=MSUM)
@@ -306,9 +306,9 @@ def physical_transport_analysis(args):
             e = np.zeros((3, 3, 3))
             e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1
             e[0, 2, 1] = e[2, 1, 0] = e[1, 0, 2] = -1
-            omga = v = np.einsum('ijk,jk...->i...', e, S)
+            omega = v = np.einsum('ijk,jk...->i...', e, S)
 
-            vm = mu*np.sum(np.square(omga), axis=0)
+            vm = mu*np.sum(np.square(omega), axis=0)
             scalar_analysis(analyzer, vm, (emin[iv], emax[iv]), emean[iv],
                             None, None, 'mu_enst', 'Enstrophic dissipation',
                             '\mu\omega_i\omega_i')

@@ -24,11 +24,11 @@ however all vector fields retain standard Einstein notation indexing order,
 
 Coding Style Guide:
 -------------------
-This module generally adheres to the Python style guide published in PEP 8,
-with the following notable exceptions:
-- Warning W503 (line break occurred before a binary operator) is ignored
-- Error E129 (visually indented line with same indent as next logical line)
-  is ignored
+This module generally adheres to the Python style guide published in
+PEP 8, with the following exceptions:
+- Warning W503 (line break occurred before a binary operator) is
+  ignored, since this warning is a mistake and PEP 8 recommends breaking
+  before operators
 - Error E225 (missing whitespace around operator) is ignored
 
 For more information see <http://pep8.readthedocs.org/en/latest/intro.html>
@@ -623,22 +623,22 @@ class hitAnalyzer(mpiBaseAnalyzer):
             e = np.zeros((3, 3, 3))
             e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1
             e[0, 2, 1] = e[2, 1, 0] = e[1, 0, 2] = -1
-            omga = np.einsum('ijk,jk...->i...', e, var)
+            omega = np.einsum('ijk,jk...->i...', e, var)
 
         elif var.ndim == 4:     # var is the vector field
-            omga = np.empty_like(var)
-            omga[0] = self.deriv(var[1], dim=2)
-            omga[0]-= self.deriv(var[2], dim=1)
+            omega = np.empty_like(var)
+            omega[0] = self.deriv(var[1], dim=2)
+            omega[0]-= self.deriv(var[2], dim=1)
 
-            omga[1] = self.deriv(var[2], dim=0)
-            omga[1]-= self.deriv(var[0], dim=2)
+            omega[1] = self.deriv(var[2], dim=0)
+            omega[1]-= self.deriv(var[0], dim=2)
 
-            omga[2] = self.deriv(var[0], dim=1)
-            omga[2]-= self.deriv(var[1], dim=0)
+            omega[2] = self.deriv(var[0], dim=1)
+            omega[2]-= self.deriv(var[1], dim=0)
         else:
             raise
 
-        return omga
+        return omega
 
     def scl_grad(self, var):
         """
@@ -681,11 +681,11 @@ class hitAnalyzer(mpiBaseAnalyzer):
         e = np.zeros((3, 3, 3))
         e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1
         e[0, 2, 1] = e[2, 1, 0] = e[1, 0, 2] = -1
-        omga = np.einsum('ijk,jk...->i...', e, A)
+        omega = np.einsum('ijk,jk...->i...', e, A)
 
         Aii = np.einsum('ii...', A)
 
-        return A, omga, Aii
+        return A, omega, Aii
 
 # Underlying Linear Algebra Routines ------------------------------------------
     # Note that the FFT derivative does not rely on the teslacu FFT package

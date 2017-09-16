@@ -7,12 +7,13 @@ from generic_plotting_functions import *
 
 # ddate = '2017_07_29/'
 
-case = 'dns_N256_K120_spectral'
-N = 256
+case = 'dns_eps2,0_nu0,0011'
+N = 512
 nk = (N/2)+1
-ttags = ['%3.3d' % i for i in range(3, 4, 1)]
+ttags = ['%3.3d' % i for i in range(0, 63, 2)]
 
-data_dir = ('/Users/colin/Google Drive/workspace/data/HIT_DNS_N256/')
+data_dir = ('/Users/colin/Google Drive/workspace/data/spectralLES/2017_09_11/'
+            '%s_512/analysis/' % case)
 fig_dir = ('/Users/colin/Google Drive/workspace/media/'
            'spectralLES/%s' % (time.strftime("%Y_%m_%d")))
 

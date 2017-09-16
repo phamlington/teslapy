@@ -42,9 +42,18 @@ cc = ['#2166ac', '#4393c3', '#92c5de', '#dde094',
 # ltblue'#91bfdb', ltyellow'#fee090',
 
 # multiRun and multiTime Colors
-rtc = ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99',
-       '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a']
-ls = ['-', '--', '-.', ':']
+rtc= [u'#08306b', u'#083673', u'#083b7c', u'#084184', u'#08468c', u'#084c95',
+      u'#09529d', u'#0d57a1', u'#115da5', u'#1562a9', u'#1a67ae', u'#1e6db2',
+      u'#2272b6', u'#2878b9', u'#2e7ebc', u'#3383be',
+      u'#3989c1', u'#3e8ec4', u'#4594c7', u'#4c99ca', u'#539dcc', u'#5aa2cf',
+      u'#61a7d2', u'#68acd5', u'#6fb0d7', u'#78b5d9', u'#81badb', u'#89bfdd',
+      u'#92c3de', u'#9bc8e0', u'#a2cce2', u'#a9cfe5', u'#b0d2e7', u'#b7d4ea',
+      u'#bdd7ec', u'#c4daee', u'#c9ddf0', u'#cde0f1', u'#d1e2f3', u'#d5e5f4',
+      u'#d9e8f5', u'#ddebf7', u'#e2edf8', u'#e6f0fa', u'#eaf3fb', u'#eef6fc',
+      u'#f3f8fe', u'#f7fbff']  # Blues_r
+# rtc = ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99',
+#        '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a']
+ls = [':', '-.', '--', '-']
 lw = [1.0]*4  # [1.5, 1.0, 1.0, 0.5]
 cycler = np.arange(len(ls)*len(rtc)).reshape(len(ls), len(rtc))
 
@@ -437,25 +446,31 @@ def plot_tseries_spectra(data_dir, fig_dir, prefix, ttags, suffix, nk,
         ki = np.arange(1, nk, dtype=np.float64)
 
         try:
-            spect[1:] *= (ki)**(5./3)/(1.2**(2./3)*(256)**6)
+            spect[1:] *= (ki)**(5./3)/(2.0**(2./3)*(512)**6)
 
-            kl, kc = np.argwhere(cycler == k % cycler.size)[0]
+            # kl, kc = np.argwhere(cycler == k % cycler.size)[0]
+            # kl = k // (len(rtc)//len(ls))
+            kc = k % len(rtc)
+            # print kl, kc
             ax[3].loglog(ki, spect[1:], label=ttags[k],
-                         c=rtc[kc], ls='-', lw=lwid)
+                         c=rtc[kc], ls='-', lw=0.75*lwid)
             ax[3].hold(True)
+            if k == nt-1:
+                ax[3].loglog(ki, spect[1:], 'm-', label=ttags[k], lw=1.5*lwid)
+
         except:
             continue
 
     try:
         lims = ax[3].axis('tight')
-        ax[3].set_ylim([0.1*max(spect[120], lims[2]), lims[3]*2])
+        ax[3].set_ylim([0.3*max(spect[240], lims[2]), lims[3]*1.5])
         ax[3].set_xlim([lims[0]/2, lims[1]*2])
         ax[3].plot([lims[0]/2, lims[1]*2], [1.6, 1.6], 'w:')
     except:
         pass
 
     ax[3].hold(False)
-    ax[3].grid(True, ls=':', linewidth=0.5, color='k', alpha=0.2)
+    ax[3].grid(True, ls=':', linewidth=0.5, color='w', alpha=0.2)
     ax[3].set_axisbelow(True)
     ax[3].tick_params(labelsize=fs1)
 
@@ -469,8 +484,8 @@ def plot_tseries_spectra(data_dir, fig_dir, prefix, ttags, suffix, nk,
         ax[3].set_title('PSD time series', fontsize=fs2, x=0.01, y=1.00,
                         loc='left')
 
-    ax[3].legend(bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0.,
-                 fontsize=fs1, handlelength=2, frameon=False,
+    ax[3].legend(bbox_to_anchor=(1.01, 1.05), loc=2, borderaxespad=0.,
+                 fontsize=2.5, handlelength=4, frameon=False,
                  handletextpad=0.1)
 
     fig[3].savefig('%s/spectra/tseries/%s-%s.png' % (fig_dir, prefix, suffix))

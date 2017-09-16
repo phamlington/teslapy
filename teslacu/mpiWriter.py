@@ -19,13 +19,12 @@ inhomogenous dimension.
 
 Coding Style Guide:
 -------------------
-This module generally adheres to the Python style guide published in PEP 8,
-with the following notable exceptions:
-- Warning W503 (line break occurred before a binary operator) is ignored
-- Error E129 (visually indented line with same indent as next logical line)
-  is ignored
+This module generally adheres to the Python style guide published in
+PEP 8, with the following exceptions:
+- Warning W503 (line break occurred before a binary operator) is
+  ignored, since this warning is a mistake and PEP 8 recommends breaking
+  before operators
 - Error E225 (missing whitespace around operator) is ignored
-
 For more information see <http://pep8.readthedocs.org/en/latest/intro.html>
 
 Definitions:

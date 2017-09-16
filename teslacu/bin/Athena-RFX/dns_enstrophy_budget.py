@@ -145,7 +145,7 @@ def ke_enstrophy_budgets(args):
     T = P/(rho*R)
     Smm = analyzer.div(u)
     mu = tcoef*np.power(T, texp)
-    omga = analyzer.curl(u)
+    omega = analyzer.curl(u)
     Enst = 0.5*np.sum(np.square(analyzer.curl(u)), axis=0)
 
     A = analyzer.grad(u)
@@ -159,8 +159,8 @@ def ke_enstrophy_budgets(args):
 
     for j in range(3):
         for i in range(3):
-            Adv += omga[i]*u[j]*analyzer.deriv(omga[i], dim=j)
-            VS += omga[i]*omga[j]*S[j, i]
+            Adv += omega[i]*u[j]*analyzer.deriv(omega[i], dim=j)
+            VS += omega[i]*omega[j]*S[j, i]
 
     Dil = 2.0*Enst*Smm
 
@@ -170,18 +170,18 @@ def ke_enstrophy_budgets(args):
     for k in range(3):
         for j in range(3):
             for i in range(3):
-                BCT += (e[i, j, k]*omga[i]*analyzer.deriv(rho, dim=j)
+                BCT += (e[i, j, k]*omega[i]*analyzer.deriv(rho, dim=j)
                         *analyzer.deriv(P, dim=k))
     BCT *= 1.0/rho**2
 
     Dif += (1.0/3.0)*np.sum(
-            omga*analyzer.curl(analyzer.div(mu*Smm)/rho), axis=0)
+            omega*analyzer.curl(analyzer.div(mu*Smm)/rho), axis=0)
 
     tau = np.zeros_like(u)
     for j in range(3):
         tau[j] = analyzer.div(mu*S[j])
 
-    Dif += 2.0*np.sum(omga*analyzer.curl(analyzer.div(tau)/rho),
+    Dif += 2.0*np.sum(omega*analyzer.curl(analyzer.div(tau)/rho),
                       axis=0)
 
     LHS = dEdt + Adv
