@@ -1,7 +1,7 @@
 ## Add something here
 
 ## Changelog
-# Latest
+### Latest
 * added argparse parser to spectralLES class
 * added LoadFromFile(argparse.Action) class
 * changed spectralLES constructor method arguments
