@@ -33,13 +33,15 @@ PEP 8, with the following exceptions:
 
 For more information see <http://pep8.readthedocs.org/en/latest/intro.html>
 
-Definitions:
-============
-wavevector  - the Fourier-space, dimensionalized, spatial-frequency
-                vector, kvec = [k3, k2, k1].
-wavenumber  - the wavevector magnitude, k = |kvec|
-wavemode    - the integer mode index of the wavenumber, km = nint(k)/dk,
-                from 0:nk
+Additionally, I have not yet, but plan to eventually get all of these
+docstrings whipped into shape and in compliance with the Numpy/Scipy
+style guide for documentation:
+<https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>
+
+Finally, this module should always strive to achieve enlightenment by
+following the the Zen of Python (PEP 20, just `import this` in a Python
+shell) and using idiomatic Python (i.e. 'Pythonic') concepts and design
+patterns.
 
 Authors:
 ========
@@ -69,89 +71,103 @@ world_comm = MPI.COMM_WORLD
 
 
 ###############################################################################
-def mpiAnalyzer(comm=world_comm, idir='./data/', odir='./analysis/',
-                probID='athena', ndims=3, L=[2*np.pi]*3, nx=[512]*3, nh=None,
-                geo=None, rct=None, method='central_diff'):
+def mpiAnalyzer(comm=world_comm, odir='./analysis/', pid='test', ndims=3,
+                L=[2*np.pi]*3, N=[512]*3, config='hit', **kwargs):
     """
     The mpiAnalyzer() function is a "class factory" which returns the
     appropriate mpi-parallel analyzer class instance based upon the
-    inputs. Each subclass contains a different ...
+    inputs. Each subclass specializes the BaseAnalyzer for a different
+    problem configuration that can be added to the if/elif branch of this
+    factory.
 
     Arguments:
+    ----------
+    comm: MPI communicator for the analyzer
 
-    Output:
+    odir: output directory of analysis products
+
+    pid: problem ID (file prefix)
+
+    ndims: number of spatial dimensions of global data (not subdomain)
+
+    L: scalar or tuple of domain dimensions
+
+    N: scalar or tuple of mesh dimensions
+
+    config: problem configuration (switch)
+
+    kwargs: additional arguments to be handled by the subclasses
+
+    output:
+    -------
+    Single instance of _baseAnalyzer or one of its subclasses
     """
 
-    if geo == 'hit' and rct is None:
-        newAnalyzer = hitAnalyzer(comm, idir, odir, probID, ndims, L, nx,
-                                  method)
-    elif geo is None and rct is None:
-        newAnalyzer = mpiBaseAnalyzer(comm, idir, odir, probID, ndims, L, nx)
+    if config == 'hit':
+        method = kwargs['method']
+        analyzer = _hitAnalyzer(comm, odir, pid, ndims, L, N, method)
+    elif config is None:
+        analyzer = _baseAnalyzer(comm, odir, pid, ndims, L, N)
     else:
         if comm.rank == 0:
             print("mpiAnalyzer.factory configuration arguments not recognized!"
-                  "\nDefaulting to base analysis class: mpiBaseAnalyzer().")
-        newAnalyzer = mpiBaseAnalyzer(comm, idir, odir, probID, ndims, L, nx)
+                  "\nDefaulting to base analysis class: _baseAnalyzer().")
+        analyzer = _baseAnalyzer(comm, odir, pid, ndims, L, N)
 
-    return newAnalyzer
+    return analyzer
 
 
 ###############################################################################
-class mpiBaseAnalyzer(object):
+class _baseAnalyzer(object):
     """
-    class mpiBaseAnalyzer(object) ...
+    class _baseAnalyzer(object) ...
     """
 
-    def __init__(self, comm, idir, odir, probID, ndims, L, nx):
-
-        # DEFINE THE INSTANCE VARIABLES
+    def __init__(self, comm, odir, pid, ndims, L, N):
 
         # "Protected" variables masked by property method
-        self.__idir = idir
-        self.__odir = odir
-        self.__probID = probID
-        self.prefix = probID+'-'
-        self.__comm = comm
-        self.__ndims = ndims
-        self.__sim_geom = "Unknown (Base Configuration)"
-        self.__sim_rctn = None
-        self.__periodic = [False]*ndims
-        self.__reacting = False
-
-        self.tol = 1.0e-6
+        self._odir = odir
+        self._pid = pid
+        self._comm = comm
+        self._ndims = ndims
+        self._config = "Unknown (Base Configuration)"
+        self._periodic = [False]*ndims
 
         # "Public" variables
+        self.tol = 1.0e-6
+        self.prefix = pid+'-'
+
         # Global domain variables
-        if np.iterable(nx):
-            if len(nx) == 1:
-                self.__nx = np.array(list(nx)*ndims, dtype=int)
-            elif len(nx) == ndims:
-                self.__nx = np.array(nx, dtype=int)  # "analysis nx"
+        if np.iterable(N):
+            if len(N) == 1:
+                self._nx = np.array(list(N)*ndims, dtype=int)
+            elif len(N) == ndims:
+                self._nx = np.array(N, dtype=int)
             else:
-                raise IndexError("The length of nx must be either 1 or ndims")
+                raise IndexError("The length of N must be either 1 or ndims")
         else:
-            self.__nx = np.array([int(nx)]*ndims, dtype=int)
+            self._nx = np.array([int(N)]*ndims, dtype=int)
 
         if np.iterable(L):
             if len(L) == 1:
-                self.__L = np.array(list(L)*ndims)
+                self._L = np.array(list(L)*ndims)
             elif len(L) == ndims:
-                self.__L = np.array(L)  # "analysis nx"
+                self._L = np.array(L)
             else:
                 raise IndexError("The length of L must be either 1 or ndims")
         else:
-            self.__L = np.array([float(L)]*ndims)
+            self._L = np.array([float(L)]*ndims)
 
-        self.dx = self.__L/self.__nx
-        self.Nx = self.__nx.prod()
+        self.dx = self._L/self._nx
+        self.Nx = self._nx.prod()
         self.Nxinv = 1.0/self.Nx
 
         # Local subdomain variables (1D Decomposition)
-        self.nnx = self.__nx.copy()
+        self.nnx = self._nx.copy()
         self.ixs = np.zeros(ndims, dtype=int)
-        self.ixe = self.__nx.copy()
+        self.ixe = self._nx.copy()
 
-        self.nnx[0] = self.__nx[0]//self.comm.size
+        self.nnx[0] = self._nx[0]//self.comm.size
         self.ixs[0] = self.nnx[0]*self.comm.rank
         self.ixe[0] = self.ixs[0]+self.nnx[0]
 
@@ -191,47 +207,35 @@ class mpiBaseAnalyzer(object):
 
     @property
     def comm(self):
-        return self.__comm
-
-    @property
-    def idir(self):
-        return self.__idir
+        return self._comm
 
     @property
     def odir(self):
-        return self.__odir
+        return self._odir
 
     @property
-    def probID(self):
-        return self.__probID
+    def pid(self):
+        return self._pid
 
     @property
     def ndims(self):
-        return self.__ndims
+        return self._ndims
 
     @property
-    def sim_geom(self):
-        return self.__sim_geom
-
-    @property
-    def sim_rctn(self):
-        return self.__sim_rctn
-
-    @property
-    def reacting(self):
-        return self.__reacting
+    def config(self):
+        return self._config
 
     @property
     def periodic(self):
-        return self.__periodic
+        return self._periodic
 
     @property
     def L(self):
-        return self.__L
+        return self._L
 
     @property
     def nx(self):
-        return self.__nx
+        return self._nx
 
     # Statistical Moments -----------------------------------------------------
 
@@ -381,20 +385,18 @@ class mpiBaseAnalyzer(object):
 
 
 ###############################################################################
-class hitAnalyzer(mpiBaseAnalyzer):
+class _hitAnalyzer(_baseAnalyzer):
     """
-    class hitAnalyzer(mpiBaseAnalyzer)
+    class _hitAnalyzer(_baseAnalyzer)
         ...
     """
 
-    def __init__(self, comm, idir, odir, probID, ndims, L, nx,
-                 method='central_diff'):
+    def __init__(self, comm, odir, pid, ndims, L, N, method='akima'):
 
-        super(hitAnalyzer, self).__init__(comm, idir, odir, probID,
-                                          ndims, L, nx)
+        super(_hitAnalyzer, self).__init__(comm, odir, pid, ndims, L, N)
 
-        self.__sim_geom = "Homogeneous Isotropic Turbulence"
-        self.__periodic = [True]*ndims
+        self._config = "Homogeneous Isotropic Turbulence"
+        self._periodic = [True]*ndims
 
         # Spectral variables (1D Decomposition)
         self.nk = self.nx.copy()
@@ -431,7 +433,7 @@ class hitAnalyzer(mpiBaseAnalyzer):
             self.deriv = self._fft_deriv
         else:
             if comm.rank == 0:
-                print("mpiAnalyzer.hitAnalyzer.__init__(): "
+                print("mpiAnalyzer._hitAnalyzer.__init__(): "
                       "'method' argument not recognized!\n"
                       "Defaulting to Akima spline flux differencing.")
             self.deriv = self._akima_deriv

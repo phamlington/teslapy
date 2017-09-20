@@ -50,7 +50,7 @@ __all__ = ['mpiReader']
 
 
 def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', ndims=3,
-              decomp=None, nx=None, nh=None, periodic=None, byteswap=True):
+              decomp=None, N=512, nh=None, periodic=None, byteswap=True):
     """
     The mpiReader() function is a "class factory" which returns the
     appropriate mpi-parallel reader class instance based upon the
@@ -62,131 +62,132 @@ def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', ndims=3,
     """
 
     if ftype == 'binary':
-        newReader = mpiBinaryReader(comm, idir, ndims, decomp, nx, nh,
-                                    periodic, byteswap)
+        newReader = _binaryReader(comm, idir, ndims, decomp, N, nh,
+                                  periodic, byteswap)
     else:
-        newReader = mpiBinaryReader(comm, idir, ndims, decomp, nx, nh,
-                                    periodic, byteswap)
+        newReader = _binaryReader(comm, idir, ndims, decomp, N, nh,
+                                  periodic, byteswap)
 
     return newReader
 # -----------------------------------------------------------------------------
 
 
-class mpiBinaryReader(object):
+class _binaryReader(object):
     """
-    class mpiBinaryReader
+    class _binaryReader
 
     Development notes:
         - this thing is pretty much not developed at all.
     """
 
-    def __init__(self, comm=MPI.COMM_WORLD, idir='./', ndims=3,
-                 decomp=None, nx=None, nh=None, periodic=None, byteswap=True):
+    def __init__(self, comm, idir, N, nh, ndims, decomp, periodic, byteswap):
 
-            # DEFINE THE INSTANCE VARIABLES
+        # DEFINE THE INSTANCE VARIABLES
 
-            # "Protected" variables masked by property method
-            #  Global variables
-            self.__idir = idir
-            self.__comm = comm
-            self.__ndims = ndims
-            self.__byteswap = byteswap
+        # "Protected" variables masked by property method
+        #  Global variables
+        self._idir = idir
+        self._comm = comm
+        self._ndims = ndims
+        self._byteswap = byteswap
 
-            if decomp is None:
-                decomp = list([True, ])
-                decomp.extend([False]*(ndims-1))
-                self.__decomp = decomp
-            elif len(decomp) == ndims:
-                self.__decomp = decomp
+        if decomp is None:
+            decomp = list([True, ])
+            decomp.extend([False]*(ndims-1))
+            self._decomp = decomp
+        elif len(decomp) == ndims:
+            self._decomp = decomp
+        else:
+            raise IndexError("Either len(decomp) must be ndims or "
+                             "decomp must be None")
+
+        if np.iterable(N):
+            if len(N) == 1:
+                self._nx = np.array(list(N)*ndims, dtype=int)
+            elif len(N) == ndims:
+                self._nx = np.array(N, dtype=int)
             else:
-                raise IndexError("Either len(decomp) must be ndims or "
-                                 "decomp must be None")
+                raise IndexError("The length of N must be either 1 or ndims")
+        else:
+            self._nx = np.array([int(N)]*ndims, dtype=int)
 
-            if nx is None:
-                self.__nx = np.array([512]*ndims, dtype=int)
-            elif len(nx) == ndims:
-                self.__nx = np.array(nx, dtype=int)  # "analysis nx"
-            else:
-                raise IndexError("Either len(nx) must be ndims or nx "
-                                 "must be None")
+        if nh is None:
+            self._nh = np.zeros(ndims, dtype=int)
+        elif len(nh) == ndims:
+            self._nh = np.array(nh, dtype=int)
+        else:
+            raise IndexError("Either len(nh) must be ndims or nh "
+                             "must be None")
 
-            if nh is None:
-                self.__nh = np.zeros(ndims, dtype=int)
-            elif len(nh) == ndims:
-                self.__nh = np.array(nh, dtype=int)
-            else:
-                raise IndexError("Either len(nh) must be ndims or nh "
-                                 "must be None")
+        if periodic is None:
+            self._periodic = tuple([False]*ndims)
+        elif len(periodic) == ndims:
+            self._periodic = tuple(periodic)
+        else:
+            raise IndexError("Either len(periodic) must be ndims or "
+                             "periodic must be None")
 
-            if periodic is None:
-                self.__periodic = tuple([False]*ndims)
-            elif len(periodic) == ndims:
-                self.__periodic = tuple(periodic)
-            else:
-                raise IndexError("Either len(periodic) must be ndims or "
-                                 "periodic must be None")
+        # Local subdomain variables
+        self._nnx = self._nx.copy()
+        self._ixs = np.zeros(ndims, dtype=int)
+        self._ixe = self._nx.copy()
 
-            # Local subdomain variables
-            self.__nnx = self.__nx.copy()
-            self.__ixs = np.zeros(ndims, dtype=int)
-            self.__ixe = self.__nx.copy()
-
-            if sum(self.__decomp) == 1:
-                # 1D domain decomposition (plates in 3D, pencils in 2D)
-                self.__nnx[0] = self.__nx[0]/comm.size
-                self.__ixs[0] = self.__nnx[0]*comm.rank
-                self.__ixe[0] = self.__ixs[0]+self.__nnx[0]
-            else:
-                raise AssertionError("mpiReader can't yet handle anything "
-                                     "but 1D Decomposition.")
+        if sum(self._decomp) == 1:
+            # 1D domain decomposition (plates in 3D, pencils in 2D)
+            self._nnx[0] = self._nx[0]/comm.size
+            self._ixs[0] = self._nnx[0]*comm.rank
+            self._ixe[0] = self._ixs[0]+self._nnx[0]
+        else:
+            raise AssertionError("mpiReader can't yet handle anything "
+                                 "but 1D Decomposition.")
 
     @property
     def comm(self):
-        return self.__comm
+        return self._comm
 
     @property
     def taskid(self):
-        return self.__taskid
+        return self._taskid
 
     @property
     def ntasks(self):
-        return self.__ntasks
+        return self._ntasks
 
     @property
     def ndims(self):
-        return self.__ndims
+        return self._ndims
 
     @property
     def decomp(self):
-        return self.__decomp
+        return self._decomp
 
     @property
     def nx(self):
-        return self.__nx
+        return self._nx
 
     @property
     def nh(self):
-        return self.__nh
+        return self._nh
 
     @property
     def nnx(self):
-        return self.__nnx
+        return self._nnx
 
     @property
     def ixs(self):
-        return self.__ixs
+        return self._ixs
 
     @property
     def ixe(self):
-        return self.__ixe
+        return self._ixe
 
     @property
     def byteswap(self):
-        return self.__byteswap
+        return self._byteswap
 
     def simulation_time(self, filename):
         if self.taskid==0:
-            with open(self.__idir+filename) as fh:
+            with open(self._idir+filename) as fh:
                 t = float(fh.readline())
         else:
             t = None
@@ -199,9 +200,9 @@ class mpiBinaryReader(object):
         """Currently hard coded to 1D domain decomposition."""
         status = MPI.Status()
         temp = np.zeros(self.nnx, dtype=ftype)
-        fpath = self.__idir+filename
+        fpath = self._idir+filename
         fhandle = MPI.File.Open(self.comm, fpath)
-        offset = self.__comm.rank*temp.nbytes
+        offset = self._comm.rank*temp.nbytes
         fhandle.Read_at_all(offset, temp, status)
         fhandle.Close()
 
@@ -219,7 +220,7 @@ class mpiBinaryReader(object):
         hsize = shape.prod()*2     # 1/2 of temp size * 4 bytes
         dsize = self.nnx.prod()*4  # subdomain size * 4 bytes
 
-        fpath = self.__idir+filename
+        fpath = self._idir+filename
         fhandle = MPI.File.Open(self.comm, fpath)
 
         # read in the -z ghost zones

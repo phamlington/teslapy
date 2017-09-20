@@ -1,0 +1,149 @@
+#**************************************************************************************************
+# TESLaCU spectralLES solver input text file for...
+#
+# Program: homogeneous_isotropic_turbulence.py
+# Author: Colin Towery, colin.towery@colorado.edu
+# Job Notes: this is a demo LES forward run program using the standard Smagorinsky model
+#            with Cs = sqrt((pi**-2)*((3*Ck)**-1.5)) == 0.098...
+#
+# Turbulence and Energy Systems Laboratory
+# Department of Mechanical Engineering
+# University of Colorado Boulder
+# http://tesla.colorado.edu
+# https://github.com/teslacu/teslapy.git
+# https://github.com/teslacu/spectralLES.git
+#**************************************************************************************************
+#
+# For simulations @ 256^3:
+# dx/eta = 1 -> nu = 0.00706 (DNS for 2nd, maybe 3rd, order statistics)
+# dx/eta = 2 -> nu = 0.0028  (DNS for at best 2nd-order statistics)
+# dx/eta = 4 -> nu = 0.0011  (well-resolved LES)
+# eps_inj = 1.2
+# k_peak = 0-64 (depending on how much small-scale energy you'd like in IC)
+#
+# Everything else stays the same.
+# For simulations @ 64^3: dx/eta =  4, 8, and 16 for above nu
+#
+#
+# !NOTE! on default tlimit/dt_* values
+#   homogeneous_isotropic_turbulence.py (and in some cases spectralLES) uses the following
+#   _a priori_ exact or approximate values for turbulence time-scales:
+#
+#   tauK = sqrt(nu/epsilon)          - Kolmogorov timescale (exact)
+#   Urms = 1.2*(epsilon*L)**(-1./3.) - expected RMS velocity (exact up to constant of 1.2)
+#   tau  = 0.2*sqrt(3)*L/Urms        - integral-scale eddy-turnover time
+#                                      (exact up to constant of 0.2 = ell/L)
+#   dt - average timestep estimated by getting dt for initial condition (or restart frame)
+#        and multiplying by ratio of Uinit/Urms, where Uinit is actual rms velocity of IC
+
+<problem configuration>
+
+pid         = les_N64_K30_spec_smag,    # problem ID, (analysis file prefix only for now)
+                                        # program default = test
+
+# L           =                           # domain dimensions, don't change from default for now!
+#                                         # spectralLES default = [2*pi, 2*pi, 2*pi]
+
+N           = 64                        # mesh dimensions
+                                        # spectralLES default = [64, 64, 64]
+
+nu          = 0.0011                    # kinematic viscosity
+                                        # spectralLES default = 0.0011
+
+epsilon     = 1.2                       # energy dissipation rate
+                                        # spectralLES default = 1.2
+
+kfLow       = 2                         # force only k >= kfLow,
+                                        # program default = 2
+                                        # spectralLES default = n/a, optional argument
+
+kfHigh      = 4                         # force only k < kfHigh,
+                                        # program default = 4
+                                        # spectralLES default = n/a, optional argument
+
+# dt_drv      =                           # turbulence forcing term refresh rate
+#                                         # program default = max(tauK, 10*dt)
+
+<solver configuration>
+
+# to setup a DNS or 'implicitly-filtered' LES solver choose spectral filter_type and
+# comment out k_les/k_test. This will configure the solver to use the les_filter as a
+# standard DNS dealiasing filter
+
+filter_type = spectral                  # LES filter shape
+                                        # spectralLES default = comp_exp
+
+# k_les       =                           # LES filter wavenumber cutoff [u(k) = 0 for k>=k_les]
+#                                         # spectralLES default = int(sqrt(2)*N/3),
+#                                         #   which provides doubly- and triply-aliased dealiasing
+
+# k_test      =                           # test filter wavenumber cutoff [u(k) = 0 for k>=k_test]
+#                                         # spectralLES default = k_les//2
+
+<time>
+cfl         = 0.45                      # CFL condition, default = 0.5
+tlimit      = 18.4997                   # simulation time limit
+                                        # program default = 262*tau,
+                                        #   which gives 6*tau for spin-up and 256*tau for data
+
+# twall       =                           # wall-time limit, NOT YET IMPLEMENTED!
+#                                         # optional argument, no program default
+
+<simulation initialization>
+
+# initial conditions, ignored if a restart flag is added above or to command line
+# all initial condition arguments have a good default in homogeneous_isotropic_turbulence.py
+
+# initial-condition  = GamieOstriker      # use specified initial condition
+#                                         # program default = GamieOstriker
+#                                         # program choices = GamieOstriker, TaylorGreen
+
+# kexp        =                           # power-law scaling of Gamie-Ostriker spectrum
+#                                         # program default     = -1./3. -> E(k) * k^(-2./3.)
+#                                         # spectralLES default = -5./6. -> E(k) * k^(-5./3.)
+
+# kpeak       =                           # exponential-decay scaling of Gamie-Ostriker spectrum
+#                                         # program default     = N//4
+#                                         # spectralLES default = N//8
+
+# Einit       =                           # turbulence kinetic energy of initial condition
+#                                         # program default     = Urms^2 = 2*KE_equil
+#                                         # spectralLES default = 0.5*Urms^2 = KE_equil
+
+<simulation restart>
+
+# this section that might more easily be added to the command line than enabled here
+
+# restart-from-last                       # optional flag, uncomment to restart from last checkpoint
+#                                         # !NOT CURRENTLY IMPLEMENTED! Equivalent to -l on command line
+
+# restart-from-num =                      # restart from specified checkpoint, optional argument
+#                                         # !NOT CURRENTLY IMPLEMENTED! Equivalent to -r on command line
+
+# idir        =                           # input directory for restarts, default = ./data/
+
+<data output>
+
+# all data input/output arguments have a good default in homogeneous_isotropic_turbulence.py
+
+# odir        =                           # output directory for bin and rst dumps
+#                                         # program default = ./data/
+
+# dt_rst      =                           # restart checkpoint output rate
+#                                         # program default = 4*tau
+
+# dt_bin      =                           # single-precision data output rate
+#                                         # program default = tau
+
+<analysis output>
+
+# all analysis input/output arguments have a good default in homogeneous_isotropic_turbulence.py
+
+# adir        =                           # analysis output directory,
+#                                         # program default = ./analysis/
+
+# dt_hst      =                           # histogram/statistical moments output rate
+#                                         # program default = max(0.2*tau, 2*tauK, 20*dt)
+
+# dt_psd      =                           # power spectral density (E(k)) output rate
+#                                         # program default = max(0.1*tau, tauK, 10*dt)

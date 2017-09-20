@@ -50,8 +50,8 @@ import os
 __all__ = ['mpiWriter']
 
 
-def mpiWriter(comm=MPI.COMM_WORLD, odir='./',  ftype='binary', ndims=3,
-              decomp=None, nx=None, nh=None, byteswap=False):
+def mpiWriter(comm=MPI.COMM_WORLD, odir='./', N=512, ftype='binary', ndims=3,
+              nh=None, decomp=None, byteswap=False):
     """
     The mpiWriter() function is a "class factory" which returns the
     appropriate mpi-parallel writer class instance based upon the
@@ -63,68 +63,67 @@ def mpiWriter(comm=MPI.COMM_WORLD, odir='./',  ftype='binary', ndims=3,
     """
 
     if ftype == 'binary':
-        newWriter = mpiBinaryWriter(comm, odir, ndims, decomp,
-                                    nx, nh, byteswap)
+        newWriter = _binaryWriter(comm, odir, ndims, decomp, N, nh, byteswap)
     else:
-        newWriter = mpiBinaryWriter(comm, odir, ndims, decomp,
-                                    nx, nh, byteswap)
+        newWriter = _binaryWriter(comm, odir, ndims, decomp, N, nh, byteswap)
 
     return newWriter
 # -----------------------------------------------------------------------------
 
 
-class mpiBinaryWriter(object):
+class _binaryWriter(object):
     """
     """
 
-    def __init__(self, comm=MPI.COMM_WORLD, odir='./', ndims=3,
-                 decomp=None, nx=None, nh=None, byteswap=False):
+    def __init__(self, comm, odir, ndims, decomp, N, nh, byteswap):
 
         # DEFINE THE INSTANCE VARIABLES
 
         # "Protected" variables masked by property method
         #  Global variables
-        self.__odir = odir
-        self.__comm = comm
-        self.__ndims = ndims
-        self.__byteswap = byteswap
+        self._odir = odir
+        self._comm = comm
+        self._ndims = ndims
+        self._byteswap = byteswap
 
         if decomp is None:
             decomp = list([True, ])
             decomp.extend([False]*(ndims-1))
-            self.__decomp = decomp
+            self._decomp = decomp
         elif len(decomp) == ndims:
-            self.__decomp = decomp
+            self._decomp = decomp
         else:
             raise IndexError("Either len(decomp) must be ndims or "
                              "decomp must be None")
 
-        if nx is None:
-            self.__nx = np.array([512]*ndims, dtype=int)
-        elif len(nx) == ndims:
-            self.__nx = np.array(nx, dtype=int)  # "analysis nx"
+        if np.iterable(N):
+            if len(N) == 1:
+                self._nx = np.array(list(N)*ndims, dtype=int)
+            elif len(N) == ndims:
+                self._nx = np.array(N, dtype=int)
+            else:
+                raise IndexError("The length of N must be either 1 or ndims")
         else:
-            raise IndexError("Either len(nx) must be ndims or nx "
-                             "must be None")
+            self._nx = np.array([int(N)]*ndims, dtype=int)
 
         if nh is None:
-            self.__nh = np.zeros(ndims, dtype=int)
+            self._nh = np.zeros(ndims, dtype=int)
         elif len(nh) == ndims:
-            self.__nh = np.array(nh, dtype=int)
+            self._nh = np.array(nh, dtype=int)
         else:
             raise IndexError("Either len(nh) must be ndims or nh "
                              "must be None")
 
         # Local subdomain variables
-        self.__nnx = self.__nx.copy()
-        self.__ixs = np.zeros(ndims, dtype=int)
-        self.__ixe = self.__nx.copy()
+        self._nnx = self._nx.copy()
+        self._ixs = np.zeros(ndims, dtype=int)
+        self._ixe = self._nx.copy()
 
-        if sum(self.__decomp) == 1:
+        if sum(self._decomp) == 1:
             # 1D domain decomposition (plates in 3D, pencils in 2D)
-            self.__nnx[0] = self.__nx[0]/comm.size
-            self.__ixs[0] = self.__nnx[0]*comm.rank
-            self.__ixe[0] = self.__ixs[0]+self.__nnx[0]
+            self._nnx[0] = self._nx[0]/comm.size
+            self._ixs[0] = self._nnx[0]*comm.rank
+            self._ixe[0] = self._ixs[0]+self._nnx[0]
         else:
             raise AssertionError("mpiReader can't yet handle anything "
                                  "but 1D Decomposition.")
@@ -153,39 +152,39 @@ class mpiBinaryWriter(object):
 
     @property
     def comm(self):
-        return self.__comm
+        return self._comm
 
     @property
     def ndims(self):
-        return self.__ndims
+        return self._ndims
 
     @property
     def decomp(self):
-        return self.__decomp
+        return self._decomp
 
     @property
     def nx(self):
-        return self.__nx
+        return self._nx
 
     @property
     def nh(self):
-        return self.__nh
+        return self._nh
 
     @property
     def nnx(self):
-        return self.__nnx
+        return self._nnx
 
     @property
     def ixs(self):
-        return self.__ixs
+        return self._ixs
 
     @property
     def ixe(self):
-        return self.__ixe
+        return self._ixe
 
     @property
     def byteswap(self):
-        return self.__byteswap
+        return self._byteswap
 
     def write_scalar(self, filename, data, dtype=np.float32):
         """
@@ -197,7 +196,7 @@ class mpiBinaryWriter(object):
         else:
             stmp = data.astype(dtype)
 
-        fhandle = MPI.File.Open(self.comm, self.__odir+filename,
+        fhandle = MPI.File.Open(self.comm, self._odir+filename,
                                 MPI.MODE_WRONLY | MPI.MODE_CREATE)
         offset = self.comm.rank*stmp.nbytes
         fhandle.Write_at_all(offset, stmp, status)
@@ -216,7 +215,7 @@ class mpiBinaryWriter(object):
         else:
             stmp = data.astype(dtype)
 
-        fhandle = MPI.File.Open(self.comm, self.__odir+filename,
+        fhandle = MPI.File.Open(self.comm, self._odir+filename,
                                 MPI.MODE_WRONLY | MPI.MODE_CREATE)
 
         displ = self.comm.size*stmp[0].nbytes

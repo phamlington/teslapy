@@ -1,37 +1,3 @@
-"""
-Analysis of compressible, ideal gas, HIT using draft versions of TESLaCU
-python modules.
-
-Command Line Options:
----------------------
--i <input directory>    default: 'data/'
--o <output directory>   default: 'analysis/'
--p <problem ID>         defualt: 'no_problem_id'
--N <Nx>                 default: 512
--g <gamma>              default: 1.4
--L <L>                  default: 1.0
--R <R>                  default: 8.3144598e7/21
--r <irs:ire:rint>       default: 1:20:1
--t <its:ite:tint>       default: 1:20:1
---Texp <texp>           default: 0.7
---Tcoef <tcoef>         default: 3.1e-6
---Tmp0 <tmp0>           default: 293.0
-
-Notes:
-------
-
-Definitions:
-------------
-
-Authors:
---------
-Colin Towery, colin.towery@colorado.edu
-
-Turbulence and Energy Systems Laboratory
-Department of Mechanical Engineering
-University of Colorado Boulder
-http://tesla.colorado.edu
-"""
 from mpi4py import MPI
 import numpy as np
 from math import *
