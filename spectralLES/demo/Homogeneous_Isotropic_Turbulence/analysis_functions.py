@@ -2,18 +2,12 @@
 """
 import numpy as np
 from math import *
-import time
 # import hashlib
 
-__all__ = ['timeofday',
-           'scalar_analysis', 'vector_analysis', 'gradient_analysis']
+__all__ = ['scalar_analysis', 'vector_analysis', 'gradient_analysis']
 
 # if __name__ == "__main__" and __package__ is None:
 #     __package__ = "teslacu.analysis_functions"
-
-
-def timeofday():
-    return time.strftime("%H:%M:%S")
 
 
 def scalar_analysis(mA, phi, minmax, w, wbar, fname, title, symb):

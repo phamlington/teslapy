@@ -250,7 +250,7 @@ class _baseAnalyzer(object):
         return tcstats.central_moments(
                                 self.comm, self.Nx*norm, data, w, wbar, m1)
 
-    def write_mpi_moments(self, data, title, sym, w=None, wbar=None,
+    def write_mpi_moments(self, data, label, w=None, wbar=None,
                           m1=None, norm=1.0):
         """Compute min, max, mean, and 2nd-6th (biased) central
         moments for assigned spatial field"""
@@ -259,8 +259,8 @@ class _baseAnalyzer(object):
 
         if self.comm.rank == 0:
             fh = open(self.mpi_moments_file, 'a')
-            fh.write(('{:s}\n{:s}\t%s\n' % '\t'.join(['{:.8e}']*6))
-                     .format(title, sym, m1, c2, c3, c4, gmin, gmax))
+            fh.write(('{:s}\t%s\n' % '{:13.8e}'*6)
+                     .format(label, m1, c2, c3, c4, gmin, gmax))
 
         return m1, c2, c3, c4, gmin, gmax
 
@@ -299,7 +299,7 @@ class _baseAnalyzer(object):
 
 # Histograms ------------------------------------------------------------------
 
-    def mpi_histogram1(self, var, fname, xlabel='', ylabel='', range=None,
+    def mpi_histogram1(self, var, fname, metadata='', range=None,
                        bins=100, w=None, wbar=None, m1=None, norm=1.0):
         """MPI-distributed univariate spatial histogram."""
 
@@ -308,19 +308,23 @@ class _baseAnalyzer(object):
         result = tcstats.histogram1(self.comm, self.Nx*norm,
                                     var, range, bins, w, wbar, m1)
         hist = result[0]
-        m = result[1:]
+        gmin, gmax, width = result[1:4]
+        m = result[4:]
 
         # write histogram from root task
         if self.comm.rank == 0:
-            fmt = ''.join(['{:.8e}\n']*len(m)).format
             fh = open('%s%s%s.hist' % (self.odir, self.prefix, fname), 'w')
-            fh.write(xlabel+'\n'+ylabel+'\n'+fmt(*m)+str(bins)+'\n')
-            hist.tofile(fh, sep='\n', format='%.8e')
+            fh.write('%s\t%s\n' % (xlabel, ylabel))
+            fmt = '%s\n' % '  '.join(['{:14.8e}']*len(m)).format
+            fh.write(fmt(*m))
+            fmt = '%d  %s\n' % '  '.join(['{:14.8e}']*3).format
+            fh.write(fmt(bins, width, gmin, gmax))
+            hist.tofile(fh, sep='\n', format='%14.8e')
             fh.close()
 
         return m
 
-    def mpi_histogram2(self, var1, var2, fname, xlabel='', ylabel='',
+    def mpi_histogram2(self, var1, var2, fname, metadata='',
                        xrange=None, yrange=None, bins=100, w=None):
         """MPI-distributed bivariate spatial histogram."""
 
@@ -337,10 +341,11 @@ class _baseAnalyzer(object):
 
         # write histogram from root task
         if self.comm.rank == 0:
-            fmt = ''.join(['{:.8e}\n']*len(m)).format
+            fmt = '%d  %s\n' % '  '.join(['{:14.8e}']*len(m)).format
             fh = open('%s%s%s.hist2d' % (self.odir, self.prefix, fname), 'w')
-            fh.write(xlabel+'\n'+ylabel+'\n'+fmt(*m)+str(bins)+'\n')
-            hist.tofile(fh, sep='\n', format='%.8e')
+            fh.write('%s\t%s\n' % (xlabel, ylabel))
+            fh.write(fmt(bins, *m))
+            hist.tofile(fh, sep='\n', format='%14.8e')
             fh.close()
 
         return m
@@ -440,7 +445,7 @@ class _hitAnalyzer(_baseAnalyzer):
 
     # Spectra -----------------------------------------------------------------
 
-    def spectral_density(self, var, fname, title, ylabel):
+    def spectral_density(self, var, fname, metadata=''):
         """
         Write the 1D power spectral density of var to text file. Method
         assumes a real input is in physical space and a complex input is
