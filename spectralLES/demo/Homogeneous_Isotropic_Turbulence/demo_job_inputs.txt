@@ -36,7 +36,8 @@
 #   dt - average timestep estimated by getting dt for initial condition (or restart frame)
 #        and multiplying by ratio of Uinit/Urms, where Uinit is actual rms velocity of IC
 
-<problem configuration>
+
+<problem>
 
 pid         = les_N64_K30_spec_smag,    # problem ID, (analysis file prefix only for now)
                                         # program default = test
@@ -64,11 +65,20 @@ kfHigh      = 4                         # force only k < kfHigh,
 # dt_drv      =                           # turbulence forcing term refresh rate
 #                                         # program default = max(tauK, 10*dt)
 
-<solver configuration>
+<time>
+cfl         = 0.45                      # CFL condition, default = 0.5
 
-# to setup a DNS or 'implicitly-filtered' LES solver choose spectral filter_type and
-# comment out k_les/k_test. This will configure the solver to use the les_filter as a
-# standard DNS dealiasing filter
+tlimit      = 18.4997                   # simulation time limit
+                                        # program default = 262*tau,
+                                        #   which gives 6*tau for spin-up and 256*tau for data
+
+# twall       =                           # optional, !NOT YET IMPLEMENTED! wall-time limit
+
+
+<solver>
+    # to setup a DNS or 'implicitly-filtered' LES solver choose spectral filter_type and
+    # comment out k_les/k_test. This will configure the solver to use the les_filter as a
+    # standard DNS dealiasing filter
 
 filter_type = spectral                  # LES filter shape
                                         # spectralLES default = comp_exp
@@ -80,19 +90,10 @@ filter_type = spectral                  # LES filter shape
 # k_test      =                           # test filter wavenumber cutoff [u(k) = 0 for k>=k_test]
 #                                         # spectralLES default = k_les//2
 
-<time>
-cfl         = 0.45                      # CFL condition, default = 0.5
-tlimit      = 18.4997                   # simulation time limit
-                                        # program default = 262*tau,
-                                        #   which gives 6*tau for spin-up and 256*tau for data
 
-# twall       =                           # wall-time limit, NOT YET IMPLEMENTED!
-#                                         # optional argument, no program default
-
-<simulation initialization>
-
-# initial conditions, ignored if a restart flag is added above or to command line
-# all initial condition arguments have a good default in homogeneous_isotropic_turbulence.py
+<initial condition>
+    # initial conditions, ignored if a restart flag is added above or to command line
+    # all initial condition arguments have a good default in homogeneous_isotropic_turbulence.py
 
 # initial-condition  = GamieOstriker      # use specified initial condition
 #                                         # program default = GamieOstriker
@@ -110,21 +111,21 @@ tlimit      = 18.4997                   # simulation time limit
 #                                         # program default     = Urms^2 = 2*KE_equil
 #                                         # spectralLES default = 0.5*Urms^2 = KE_equil
 
-<simulation restart>
 
-# this section that might more easily be added to the command line than enabled here
+<restart>
+    # this section might more easily be added to the command line in your bash execution script
 
-# restart-from-last                       # optional flag, uncomment to restart from last checkpoint
-#                                         # !NOT CURRENTLY IMPLEMENTED! Equivalent to -l on command line
+# restart-from-last                       # optional, uncomment to restart from last checkpoint
+#                                         # !NOT YET IMPLEMENTED! same as -l on command line
 
-# restart-from-num =                      # restart from specified checkpoint, optional argument
-#                                         # !NOT CURRENTLY IMPLEMENTED! Equivalent to -r on command line
+# restart-from-num =                      # optional, restart from specified checkpoint
+#                                         # !NOT YET IMPLEMENTED! same as -r RST on command line
 
 # idir        =                           # input directory for restarts, default = ./data/
 
-<data output>
 
-# all data input/output arguments have a good default in homogeneous_isotropic_turbulence.py
+<simulation output>
+    # all data output arguments have a good default in homogeneous_isotropic_turbulence.py
 
 # odir        =                           # output directory for bin and rst dumps
 #                                         # program default = ./data/
@@ -135,9 +136,9 @@ tlimit      = 18.4997                   # simulation time limit
 # dt_bin      =                           # single-precision data output rate
 #                                         # program default = tau
 
-<analysis output>
 
-# all analysis input/output arguments have a good default in homogeneous_isotropic_turbulence.py
+<analysis output>
+    # all analysis output arguments have a good default in homogeneous_isotropic_turbulence.py
 
 # adir        =                           # analysis output directory,
 #                                         # program default = ./analysis/

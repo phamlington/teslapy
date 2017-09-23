@@ -68,7 +68,6 @@ https://github.com/teslacu/spectralLES.git
 from mpi4py import MPI
 import numpy as np
 from math import *
-import sys
 import argparse
 
 from teslacu.fft import rfft3, irfft3            # FFT transforms
@@ -133,7 +132,8 @@ class spectralLES(object):
     """
 
     # Class Variables ---------------------------------------------------------
-    parser = argparse.ArgumentParser(prog='spectralLES')
+    parser = argparse.ArgumentParser(prog='spectralLES', add_help=False)
+
     parser.description = ('a pure-Python pseudo-spectral large eddy simulation'
                           ' solver for model development and testing')
 
@@ -141,11 +141,13 @@ class spectralLES(object):
                         help='path to file-based input arguments')
 
     _config_group = parser.add_argument_group(
-                        'spectralLES problem configuration parameters')
+                        'problem configuration arguments')
 
-    _config_group.add_argument('-N', type=int, nargs='+', default=[64]*3,
+    _config_group.add_argument('-N', type=int, nargs='+', default=64,
+                               metavar=('Nx', 'Ny', 'Nz'),
                                help='mesh dimensions')
-    _config_group.add_argument('-L', type=float, nargs='+', default=[2.0*pi]*3,
+    _config_group.add_argument('-L', type=float, nargs='+', default=2.0*pi,
+                               metavar=('Lx', 'Ly', 'Lz'),
                                help='domain dimensions')
     _config_group.add_argument('--nu', type=float, default=0.0011,
                                help='viscosity')
@@ -157,7 +159,7 @@ class spectralLES(object):
                                help='high-wavenumber cutoff of HIT forcing')
 
     _solver_group = parser.add_argument_group(
-                        'spectralLES solver configuration parameters')
+                        'solver configuration arguments')
 
     _solver_group.add_argument('--filter_type', type=str, dest='Gtype',
                                default='comp_exp',
@@ -283,9 +285,8 @@ class spectralLES(object):
         nz, nny, nk = self.nnk
 
         self.U = np.empty((3, nnz, ny, nx))     # solution vector
-        self.omega = np.empty_like(self.U)      # vorticity and vector memory
-        self.A = np.empty((3, 3, nnz, ny, nx))  # Tensor memory
-        # P = np.empty((nnz, ny, nx))
+        self.omega = np.empty_like(self.U)      # vorticity
+        self.A = np.empty((3, 3, nnz, ny, nx))  # Tensor-sized memory
 
         self.U_hat = np.empty((3, nz, nny, nk), dtype=complex)
         self.U_hat0= np.empty_like(self.U_hat)
@@ -395,9 +396,9 @@ class spectralLES(object):
         # Rescale to give desired spectrum
 
         # - First ensure that the wavenumber magnitudes are isotropic
-        A = self.L/self.L.min()  # domain size aspect ratios
-        A.resize((3, 1, 1, 1))   # ensure proper array broadcasting
-        kmag = np.sqrt(np.sum(np.square(self.K.astype(float)/A), axis=0))
+        a = self.L/self.L.min()  # domain size aspect ratios
+        a.resize((3, 1, 1, 1))   # ensure proper array broadcasting
+        kmag = np.sqrt(np.sum(np.square(self.K.astype(float)/a), axis=0))
 
         # - Second, scale to Gamie-Ostriker spectrum with kexp and kpeak
         #   and do not excite modes smaller than dk along the shortest
@@ -417,8 +418,8 @@ class spectralLES(object):
             Einit = 0.72*(self.epsilon*self.L.max())**(2./3.)
             # the constant of 0.72 is empirically-based
         if kpeak is None:
-            A = self.L/self.L.min()         # domain size aspect ratios
-            kpeak = np.max((self.nx//8)/A)  # this gives kmax/4
+            a = self.L/self.L.min()         # domain size aspect ratios
+            kpeak = np.max((self.nx//8)/a)  # this gives kmax/4
 
         self.compute_random_HIT_spectrum(kexp, kpeak, rseed)
 
@@ -450,11 +451,11 @@ class spectralLES(object):
         """
         self.compute_random_HIT_spectrum(-5./3., self.nk[-1], rseed)
         self.S_hat *= self.hit_filter
-
-        self.omega[0] = irfft3(self.comm, self.S_hat[0])
-        self.omega[1] = irfft3(self.comm, self.S_hat[1])
-        self.omega[2] = irfft3(self.comm, self.S_hat[2])
-        dvScale = self.epsilon/(self.comm.allreduce(psum(self.omega*self.U)))
+        S = self.A[0]  # take a slice of tensor memory for vector memory
+        S[0] = irfft3(self.comm, self.S_hat[0])
+        S[1] = irfft3(self.comm, self.S_hat[1])
+        S[2] = irfft3(self.comm, self.S_hat[2])
+        dvScale = self.epsilon/(self.comm.allreduce(psum(S*self.U)))
 
         self.S_hat *= dvScale
         self.dU += self.S_hat
@@ -476,11 +477,11 @@ class spectralLES(object):
         self.S_hat[:] = self.U_hat*self.hit_filter
 
         if dvScale is None:
-            self.omega[0] = irfft3(self.comm, self.S_hat[0])
-            self.omega[1] = irfft3(self.comm, self.S_hat[1])
-            self.omega[2] = irfft3(self.comm, self.S_hat[2])
-            dvScale = self.epsilon/(self.comm.allreduce(
-                                                psum(self.omega*self.U)))
+            S = self.A[0]  # take a slice of tensor memory for vector memory
+            S[0] = irfft3(self.comm, self.S_hat[0])
+            S[1] = irfft3(self.comm, self.S_hat[1])
+            S[2] = irfft3(self.comm, self.S_hat[2])
+            dvScale = self.epsilon/(self.comm.allreduce(psum(S*self.U)))
 
         if computeRHS:
             self.S_hat *= dvScale
@@ -526,15 +527,12 @@ class spectralLES(object):
         """
 
         # take curl of velocity to get vorticity and inverse transform
-        self.omega[2] = irfft3(self.comm,
-                               1j*(self.K[0]*self.U_hat[1]
-                                   -self.K[1]*self.U_hat[0]))
-        self.omega[1] = irfft3(self.comm,
-                               1j*(self.K[2]*self.U_hat[0]
-                                   -self.K[0]*self.U_hat[2]))
-        self.omega[0] = irfft3(self.comm,
-                               1j*(self.K[1]*self.U_hat[2]
-                                   -self.K[2]*self.U_hat[1]))
+        self.omega[2] = irfft3(self.comm, 1j*(self.K[0]*self.U_hat[1]
+                                              -self.K[1]*self.U_hat[0]))
+        self.omega[1] = irfft3(self.comm, 1j*(self.K[2]*self.U_hat[0]
+                                              -self.K[0]*self.U_hat[2]))
+        self.omega[0] = irfft3(self.comm, 1j*(self.K[1]*self.U_hat[2]
+                                              -self.K[2]*self.U_hat[1]))
 
         # compute convective transport as the physical-space cross-product of
         # vorticity and velocity and forward transform

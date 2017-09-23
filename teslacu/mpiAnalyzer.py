@@ -432,9 +432,9 @@ class _hitAnalyzer(_baseAnalyzer):
 
         if method == 'central_diff':
             self.deriv = self._centdiff_deriv
-        elif method == 'akima':
+        elif method == 'spline_flux_diff':
             self.deriv = self._akima_deriv
-        elif method == 'fourier':
+        elif method == 'spectral':
             self.deriv = self._fft_deriv
         else:
             if comm.rank == 0:
