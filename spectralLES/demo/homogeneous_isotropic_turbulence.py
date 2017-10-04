@@ -25,6 +25,7 @@ https://github.com/teslacu/spectralLES.git
 from mpi4py import MPI
 import numpy as np
 import sys
+import time
 from math import *
 import argparse
 from spectralLES import spectralLES
@@ -434,9 +435,6 @@ time_group.add_argument('-w', '--twall', type=float,
 
 init_group = hit_parser.add_argument_group('initial condition arguments')
 
-init_group.add_argument(
-                        default='GamieOstriker', metavar='IC',
-                        choices=['GamieOstriker', 'TaylorGreen'])
 init_group.add_argument('-i', '--init', '--initial-condition',
                         metavar='IC', default='GamieOstriker',
                         choices=['GamieOstriker', 'TaylorGreen'],
