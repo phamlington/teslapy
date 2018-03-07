@@ -6,15 +6,6 @@ using draft versions of TESLaCU Python modules and routines from the
 spectralDNS3D_short Taylor-Green Vortex simulation code written by Mikael
 Mortensen (<https://github.com/spectralDNS/spectralDNS/spectralDNS3D_short.py>)
 
-Command Line Options:
----------------------
--i <input directory>    default: 'data/'
--o <output directory>   default: 'analysis/'
--p <problem ID>         defualt: 'no_problem_id'
--N <Nx>                 default: 64
--L <L>                  default: 2*pi
--t <tlimit>             default: 0.1
-
 Notes:
 ------
 
@@ -60,31 +51,32 @@ def taylor_green_vortex():
 
     if N % comm.size > 0:
         if comm.rank == 0:
-            print ('Job started with improper number of MPI tasks for the '
-                   'size of the data specified!')
+            print('Job started with improper number of MPI tasks for the '
+                  'size of the data specified!')
         MPI.Finalize()
         sys.exit(1)
 
-    solver = spectralLES(comm, L, N, nu)
+    solver = spectralLES(comm, N, L, nu, epsilon=0, Gtype='spectral')
 
     kmax_dealias = (2./3.)*(N//2+1)
     solver.les_filter = np.array((abs(solver.K[0]) < kmax_dealias)
                                  *(abs(solver.K[1]) < kmax_dealias)
                                  *(abs(solver.K[2]) < kmax_dealias),
-                                 dtype=bool)
+                                 dtype=np.int8)
 
     sys.stdout.flush()  # forces Python 3 to flush print statements
 
     # -------------------------------------------------------------------------
 
     t = 0.0
+    dt= 0.01
+    tlimit= 1.0
     tstep = 0
-    dt = 0.01
-    tlimit = 1.0
-    t0 = time.time()
 
-    solver.Initialize_Taylor_Green_vortex()
-    solver.computeAD = solver.computeAD_vorticity_formulation
+    start = time.time()
+
+    solver.initialize_Taylor_Green_vortex()
+    solver.computeAD = solver.computeAD_vorticity_form
 
     while t < tlimit-1.e-8:
         k = comm.reduce(0.5*np.sum(np.square(solver.U)*(1./N)**3))
@@ -104,7 +96,7 @@ def taylor_green_vortex():
     k = comm.reduce(0.5*np.sum(np.square(solver.U)*(1./N)**3))
     k_true = 0.12451526736699045  # from spectralDNS3D_short.py run until T=1.0
     if comm.rank == 0:
-        print("Time = %12.8f, KE = %16.13f" % (time.time()-t0, k))
+        print("Time = %12.8f, KE = %16.13f" % (time.time()-start, k))
 
         # assert that the two codes must be within single-precision round-off
         # error of each other

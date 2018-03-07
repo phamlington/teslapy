@@ -39,7 +39,7 @@
 
 <problem>
 
-pid         = les_N64_K30_spec_smag,    # problem ID, (analysis file prefix only for now)
+pid         = les_N64_K30_spec_smag     # problem ID, (analysis file prefix only for now)
                                         # program default = test
 
 # L           =                           # domain dimensions, don't change from default for now!
@@ -48,10 +48,10 @@ pid         = les_N64_K30_spec_smag,    # problem ID, (analysis file prefix only
 N           = 64                        # mesh dimensions
                                         # spectralLES default = [64, 64, 64]
 
-nu          = 0.0011                    # kinematic viscosity
+nu          = 0.000185                  # kinematic viscosity
                                         # spectralLES default = 0.0011
 
-epsilon     = 1.2                       # energy dissipation rate
+epsilon     = 0.103                       # energy dissipation rate
                                         # spectralLES default = 1.2
 
 kfLow       = 2                         # force only k >= kfLow,
@@ -68,7 +68,7 @@ kfHigh      = 4                         # force only k < kfHigh,
 <time>
 cfl         = 0.45                      # CFL condition, default = 0.5
 
-tlimit      = 18.4997                   # simulation time limit
+tlimit      = 20.0                      # simulation time limit
                                         # program default = 262*tau,
                                         #   which gives 6*tau for spin-up and 256*tau for data
 
@@ -99,17 +99,17 @@ filter_type = spectral                  # LES filter shape
 #                                         # program default = GamieOstriker
 #                                         # program choices = GamieOstriker, TaylorGreen
 
-# kexp        =                           # power-law scaling of Gamie-Ostriker spectrum
-#                                         # program default     = -1./3. -> E(k) * k^(-2./3.)
-#                                         # spectralLES default = -5./6. -> E(k) * k^(-5./3.)
+kexp        = -0.8333                   # power-law scaling of Gamie-Ostriker spectrum
+                                        # program default     = -1./3. -> E(k) * k^(-2./3.)
+                                        # spectralLES default = -5./6. -> E(k) * k^(-5./3.)
 
 # kpeak       =                           # exponential-decay scaling of Gamie-Ostriker spectrum
 #                                         # program default     = N//4
 #                                         # spectralLES default = N//8
 
-# Einit       =                           # turbulence kinetic energy of initial condition
-#                                         # program default     = Urms^2 = 2*KE_equil
-#                                         # spectralLES default = 0.5*Urms^2 = KE_equil
+Einit       = 0.2                       # turbulence kinetic energy of initial condition
+                                        # program default     = Urms^2 = 2*KE_equil
+                                        # spectralLES default = 0.5*Urms^2 = KE_equil
 
 
 <restart>

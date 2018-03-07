@@ -314,7 +314,7 @@ class _baseAnalyzer(object):
         # write histogram from root task
         if self.comm.rank == 0:
             fh = open('%s%s%s.hist' % (self.odir, self.prefix, fname), 'w')
-            fh.write('%s\t%s\n' % (xlabel, ylabel))
+            fh.write('%s\n' % metadata)
             fmt = '%s\n' % '  '.join(['{:14.8e}']*len(m)).format
             fh.write(fmt(*m))
             fmt = '%d  %s\n' % '  '.join(['{:14.8e}']*3).format
@@ -343,7 +343,7 @@ class _baseAnalyzer(object):
         if self.comm.rank == 0:
             fmt = '%d  %s\n' % '  '.join(['{:14.8e}']*len(m)).format
             fh = open('%s%s%s.hist2d' % (self.odir, self.prefix, fname), 'w')
-            fh.write('%s\t%s\n' % (xlabel, ylabel))
+            fh.write('%s\n' % metadata)
             fh.write(fmt(bins, *m))
             hist.tofile(fh, sep='\n', format='%14.8e')
             fh.close()
@@ -398,7 +398,7 @@ class _hitAnalyzer(_baseAnalyzer):
 
     def __init__(self, comm, odir, pid, ndims, L, N, method='akima'):
 
-        super(_hitAnalyzer, self).__init__(comm, odir, pid, ndims, L, N)
+        super().__init__(comm, odir, pid, ndims, L, N)
 
         self._config = "Homogeneous Isotropic Turbulence"
         self._periodic = [True]*ndims
@@ -472,7 +472,7 @@ class _hitAnalyzer(_baseAnalyzer):
 
         if self.comm.rank == 0:
             fh = open('%s%s%s.spectra' % (self.odir, self.prefix, fname), 'w')
-            fh.write(title+'\n'+ylabel+'\n')
+            fh.write('%s\n' % metadata)
             spect1d.tofile(fh, sep='\n', format='% .8e')
             fh.close()
 

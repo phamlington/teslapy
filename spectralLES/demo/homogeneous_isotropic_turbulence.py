@@ -8,7 +8,7 @@ for model development and testing.
 
 Notes:
 ------
-run `mpiexec -n 1 python homogeneous_isotropic_turbulence -h` for help message
+run `mpiexec -n 1 python homogeneous_isotropic_turbulence.py -h` for help
 
 Authors:
 --------
@@ -52,6 +52,7 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
 
     # if function called without passing in parsed arguments, then parse
     # the arguments from the command line
+
     if pp is None:
         pp = hit_parser.parse_known_args()[0]
 
@@ -97,11 +98,13 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
     # -- form HIT initial conditions from either user-defined values or
     #    physics-based relationships using epsilon and L
     Urms = 1.2*(pp.epsilon*L)**(1./3.)             # empirical coefficient
-    Einit = getattr(pp, 'Einit', None) or Urms**2  # == 2*KE_equilibrium
+    Einit= getattr(pp, 'Einit', None) or Urms**2   # == 2*KE_equilibrium
     kexp = getattr(pp, 'kexp', None) or -1./3.     # -> E(k) ~ k^(-2./3.)
-    kpeak = getattr(pp, 'kpeak', None) or N//4     # ~ kmax/2
+    kpeak= getattr(pp, 'kpeak', None) or N//4      # ~ kmax/2
+
     # !  currently using a fixed random seed of comm.rank for testing
     solver.initialize_HIT_random_spectrum(Einit, kexp, kpeak, rseed=comm.rank)
+
     U_hat = solver.U_hat
     U = solver.U
     omega = solver.omega
@@ -115,7 +118,7 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
     Ek_fmt = "\widehat{{{0}}}^*\widehat{{{0}}}".format
     emin = np.inf
     emax = np.NINF
-    analyzer.mpi_moments_file = '%s%s.moments' % (analyzer.odir, pid)
+    analyzer.mpi_moments_file = '%s%s.moments' % (analyzer.odir, pp.pid)
 
     # -------------------------------------------------------------------------
     # Setup the various time and IO counters
@@ -123,7 +126,8 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
     tauK = sqrt(pp.nu/pp.epsilon)           # Kolmogorov time-scale
     taul = 0.2*L*sqrt(3)/Urms               # 0.2 is empirical coefficient
     c = pp.cfl*sqrt(2*Einit)/Urms
-    dt = solver.new_dt_const_nu(c)          # use as estimate
+    dt = solver.new_dt_constant_nu(c)       # use as estimate
+    print("Integral time scale = {}".format(taul))
 
     if pp.tlimit == np.Inf:   # put a very large but finite limit on the run
         pp.tlimit = 262*taul  # such as (256+6)*tau, for spinup and 128 samples
@@ -160,7 +164,7 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
     while t_sim < pp.tlimit+1.e-8:
 
         # -- Update the dynamic dt based on CFL constraint
-        dt = solver.new_dt_const_nu(pp.cfl)
+        dt = solver.new_dt_constant_nu(pp.cfl)
         t_test = t_sim + 0.5*dt
         compute_vorticity = True  # reset the vorticity computation flag
 
@@ -173,41 +177,41 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
         # - output snapshots and data analysis products
         if t_test >= t_spec:
             analyzer.spectral_density(U_hat, '%3.3d_u' % ispec,
-                                      'velocity PSD', Ek_fmt('u_i'))
+                                      'velocity PSD\t%s' % Ek_fmt('u_i'))
 
             omega[2] = irfft3(comm, 1j*(K[0]*U_hat[1] - K[1]*U_hat[0]))
             omega[1] = irfft3(comm, 1j*(K[2]*U_hat[0] - K[0]*U_hat[2]))
             omega[0] = irfft3(comm, 1j*(K[1]*U_hat[2] - K[2]*U_hat[1]))
 
             analyzer.spectral_density(omega, '%3.3d_omga' % ispec,
-                                      'vorticity PSD', Ek_fmt('\omega_i'))
+                                      'vorticity PSD\t%s' % Ek_fmt('\omega_i'))
 
             t_spec += dt_spec
             ispec += 1
             compute_vorticity = False
 
-        if t_test >= t_stat:
+        # if t_test >= t_stat:
 
-            if compute_vorticity:
-                omega[2] = irfft3(comm, 1j*(K[0]*U_hat[1] - K[1]*U_hat[0]))
-                omega[1] = irfft3(comm, 1j*(K[2]*U_hat[0] - K[0]*U_hat[2]))
-                omega[0] = irfft3(comm, 1j*(K[1]*U_hat[2] - K[2]*U_hat[1]))
+        #     if compute_vorticity:
+        #         omega[2] = irfft3(comm, 1j*(K[0]*U_hat[1] - K[1]*U_hat[0]))
+        #         omega[1] = irfft3(comm, 1j*(K[2]*U_hat[0] - K[0]*U_hat[2]))
+        #         omega[0] = irfft3(comm, 1j*(K[1]*U_hat[2] - K[2]*U_hat[1]))
 
-            enst = 0.5*np.sum(np.square(omega), axis=0)
+        #     enst = 0.5*np.sum(np.square(omega), axis=0)
 
-            emin = min(emin, comm.allreduce(np.min(enst), op=MPI.MIN))
-            emax = max(emax, comm.allreduce(np.max(enst), op=MPI.MAX))
+        #     emin = min(emin, comm.allreduce(np.min(enst), op=MPI.MIN))
+        #     emax = max(emax, comm.allreduce(np.max(enst), op=MPI.MAX))
 
-            scalar_analysis(analyzer, enst, (emin, emax), None, None,
-                            '%3.3d_enst' % istat, 'enstrophy', '\Omega')
-            t_stat += dt_stat
-            istat += 1
+        #     scalar_analysis(analyzer, enst, (emin, emax), None, None,
+        #                     '%3.3d_enst' % istat, 'enstrophy', '\Omega')
+        #     t_stat += dt_stat
+        #     istat += 1
 
         # -- output singe-precision binary files and restart checkpoints
-        if t_test >= t_bin:
-            writer.write_scalar('Enstrophy_%3.3d.bin' % ibin, enst, np.float32)
-            t_bin += dt_bin
-            ibin += 1
+        # if t_test >= t_bin:
+        #     writer.write_scalar('Enstrophy_%3.3d.bin' % ibin, enst, np.float32)
+        #     t_bin += dt_bin
+        #     ibin += 1
 
         if t_test >= t_rst:
             writer.write_scalar('Velocity1_%3.3d.rst' % irst, U[0], np.float64)
@@ -223,6 +227,7 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
             t_drv += dt_drv
             if comm.rank == 0:
                 print("------ updated linear forcing pattern ------")
+                # print(kwargs['dvScale'])
 
         # -- integrate the solution forward in time
         solver.RK4_integrate(dt, *Sources, **kwargs)
@@ -240,15 +245,15 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
     omega[0] = irfft3(comm, 1j*(K[1]*U_hat[2] - K[2]*U_hat[1]))
     enst = 0.5*np.sum(np.square(omega), axis=0)
 
-    analyzer.spectral_density(U_hat, '%3.3d_u' % ispec, 'velocity PSD',
-                              Ek_fmt('u_i'))
+    analyzer.spectral_density(U_hat, '%3.3d_u' % ispec, 'velocity PSD\t%s'
+                              % Ek_fmt('u_i'))
     analyzer.spectral_density(omega, '%3.3d_omga' % ispec,
-                              'vorticity PSD', Ek_fmt('\omega_i'))
+                              'vorticity PSD\t%s' % Ek_fmt('\omega_i'))
 
-    emin = min(emin, comm.allreduce(np.min(enst), op=MPI.MIN))
-    emax = max(emax, comm.allreduce(np.max(enst), op=MPI.MAX))
-    scalar_analysis(analyzer, enst, (emin, emax), None, None,
-                    '%3.3d_enst' % istat, 'enstrophy', '\Omega')
+    # emin = min(emin, comm.allreduce(np.min(enst), op=MPI.MIN))
+    # emax = max(emax, comm.allreduce(np.max(enst), op=MPI.MAX))
+    # scalar_analysis(analyzer, enst, (emin, emax), None, None,
+    #                 '%3.3d_enst' % istat, 'enstrophy', '\Omega')
 
     writer.write_scalar('Enstrophy_%3.3d.bin' % ibin, enst, np.float32)
 
@@ -293,11 +298,12 @@ def scalar_analysis(mA, phi, minmax, w, wbar, fname, title, symb):
 
     Ek_fmt = "\widehat{{{0}}}^*\widehat{{{0}}}".format
 
-    mA.mpi_histogram1(phi.copy(), fname, xlabel, ylabel, minmax, 100, w, wbar)
+    mA.mpi_histogram1(phi.copy(), fname, '%s\t%s' % (xlabel, ylabel),
+                      minmax, 100, w, wbar)
     mA.write_mpi_moments(phi, title, symb, w, wbar)
 
     if fname in ['rho', 'P', 'T', 'Smm', 'Y']:
-        mA.spectral_density(phi, fname, title+' PSD', Ek_fmt(symb))
+        mA.spectral_density(phi, fname, '%s PSD\t%s' % (title, Ek_fmt(symb)))
 
     # insert structure functions, scalar increments, two-point
     # correlations here.
@@ -338,9 +344,9 @@ def vector_analysis(mA, v, minmax, w, wbar, fname, title, symb):
     Ek_fmt = "\widehat{{{0}}}^*\widehat{{{0}}}".format
 
     # vector components analyzed
-    mA.mpi_histogram1(v.copy(), fname, xlabel, ylabel, minmax,
+    mA.mpi_histogram1(v.copy(), fname, '%s\t%s' % (xlabel, ylabel), minmax,
                       100, wvec, wbar, norm=3.0)
-    mA.spectral_density(v, fname, title+' PSD', Ek_fmt(symb))
+    mA.spectral_density(v, fname, '%s PSD\t%s' % (title, Ek_fmt(symb)))
     mA.write_mpi_moments(v, title, symb, wvec, wbar, m1=0, norm=3.0)
 
     # insert structure functions, scalar increments, two-point
@@ -389,8 +395,8 @@ def gradient_analysis(mA, A, minmax, w, wbar, fname, title, symb):
 
     symb += '_{ij}'
 
-    mA.mpi_histogram1(A.copy(), fname, xlabel, ylabel, minmax, 100, W, wbar,
-                      norm=9.0)
+    mA.mpi_histogram1(A.copy(), fname, '%s\t%s' % (xlabel, ylabel),
+                      minmax, 100, W, wbar, norm=9.0)
 
     # Aii = np.einsum('ii...', A)
     # I = np.identity(3)/3.0

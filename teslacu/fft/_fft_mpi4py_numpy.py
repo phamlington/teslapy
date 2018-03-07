@@ -61,22 +61,14 @@ http://tesla.colorado.edu
 from mpi4py import MPI
 import numpy as np
 
-__all__ = ['psum', 'rfft3', 'irfft3', 'shell_average']
+__all__ = ['psum', 'rfft3', 'irfft3', 'shell_average', 'y2z_slab_exchange',
+           'z2y_slab_exchange']
 
 # if __name__ == "__main__" and __package__ is None:
 #     __package__ = "teslacu.fft_mpi4py_numpy"
 
 
-def psum(data):
-    """
-    Array summation by heirarchical partial summation.
-    Input argument data can be any n-dimensional array-like object,
-    even a (n=0) scalar. That is, psum() is safe to use on any
-    numeric data type.
-    """
-    return np.sum(np.sum(np.sum(data, axis=-1), axis=-1))
-
-
+# 3D real-valued FFTs ---------------------------------------------------------
 def rfft3(comm, u, fu=None):
     """
     Compute MPI-distributed, real-to-complex 3D FFT.
@@ -131,6 +123,17 @@ def irfft3(comm, fu, u=None):
     return u
 
 
+# Auxiliary functions ---------------------------------------------------------
+def psum(data):
+    """
+    Array summation by heirarchical partial summation.
+    Input argument data can be any n-dimensional array-like object,
+    even a (n=0) scalar. That is, psum() is safe to use on any
+    numeric data type.
+    """
+    return np.sum(np.sum(np.sum(data, axis=-1), axis=-1))
+
+
 def shell_average(comm, E3, km):
     """
     Compute the 1D, shell-averaged, spectrum of the 3D Fourier-space
@@ -158,8 +161,83 @@ def shell_average(comm, E3, km):
     return E1
 
 
-def fft3_unit_test(comm, u, fwdn, invn):
+# Data Transposing ------------------------------------------------------------
+def z2y_slab_exchange(comm, var, varT=None):
+    """
+    Domain decomposition 'transpose' of MPI-distributed scalar array.
+    Assumes 1D domain decomposition
+    """
+
+    nnz, ny, nx = var.shape
+    nz = nnz*comm.size
+    nny = ny//comm.size
+
+    if varT is None:
+        varT = np.empty([comm.size, nnz, nny, nx], dtype=var.dtype)
+    else:
+        varT.resize([comm.size, nnz, nny, nx])
+
+    varT[:] = np.rollaxis(var.reshape([nnz, comm.size, nny, nx]), 1)
+    comm.Alltoall(MPI.IN_PLACE, varT)  # send, receive
+    varT.resize([nz, nny, nx])
+
+    return varT
+
+
+def y2z_slab_exchange(comm, varT, var=None):
+    """
+    Domain decomposition 'transpose' of MPI-distributed scalar array.
+    Assumes 1D domain decomposition
+    """
+
+    nz, nny, nx = varT.shape
+    nnz = nz//comm.size
+    ny = nny*comm.size
+
+    if var is None:
+        var = np.empty([comm.size, nnz, nny, nx], dtype=varT.dtype)
+    else:
+        var.resize([comm.size, nnz, nny, nx])
+
+    comm.Alltoall(var, varT.reshape(var.shape))  # send, receive
+    var.resize([nnz, ny, nx])
+    var[:] = np.rollaxis(var, 1).reshape(var.shape)
+
+    return var
+
+
+# Package testing functions ---------------------------------------------------
+def fft3_unit_test(comm, u):
     fu = rfft3(comm, u)
     up = irfft3(comm, fu)
     check = u/up
     print('fft3 checksum:', check.min(), check.max(), check.sum())
+
+    return
+
+
+def shift_theorem_test(comm, u):
+    """
+    NOTE that if you are using FFTs to shift data in a periodic domain
+    of dimensions L = [2pi, 2pi, 2pi], then the shift can be formed
+    using either
+        2j*pi * k * n/N
+    or
+        1j * k * dx*n
+    since dx == 2*pi/N.
+
+    NOTE that the shift theorem describes negative shifts, i -> i-n, by
+    exp(-2j*pi * k * n/N), therefore a positive shift, i -> i+n, should
+    not have a negative sign!
+    """
+
+    N = u.shape[-1]             # length of x-direction
+    k = np.fft.rfftfreq(N)*N    # integer wavenumbers in x-direction
+    n = 2                       # number of positions to shift along x
+    shift = np.exp(2j*np.pi*k*n/N)
+    fu = rfft3(comm, u)
+    u_shift = irfft3(comm, fu*shift)
+    assert np.allclose(u[:, :, 2:], u_shift[:, :, :-2])
+
+    return
+
