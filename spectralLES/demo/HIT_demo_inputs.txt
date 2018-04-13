@@ -83,7 +83,7 @@ tlimit      = 20.0                      # simulation time limit
 filter_type = spectral                  # LES filter shape
                                         # spectralLES default = comp_exp
 
-# k_les       =                           # LES filter wavenumber cutoff [u(k) = 0 for k>=k_les]
+# k_les       = 27                        # LES filter wavenumber cutoff [u(k) = 0 for k>=k_les]
 #                                         # spectralLES default = int(sqrt(2)*N/3),
 #                                         #   which provides doubly- and triply-aliased dealiasing
 

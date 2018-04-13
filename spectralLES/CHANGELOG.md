@@ -2,6 +2,7 @@
 
 ## Changelog
 ### Latest
+* added np.seterr(divide='ignore') contexts around known divide-by-zero operations to suppress runtime warnings
 * added argparse parser to spectralLES class
 * added LoadFromFile(argparse.Action) class
 * changed spectralLES constructor method arguments

@@ -8,7 +8,12 @@ for model development and testing.
 
 Notes:
 ------
-run `mpiexec -n 1 python homogeneous_isotropic_turbulence.py -h` for help
+To execute the program in serial with an input file on the command line, run
+`mpiexec -n 1 python homogeneous_isotropic_turbulence.py \
+              -f HIT_demo_inputs.txt`.
+
+For help with program options, run
+`mpiexec -n 1 python homogeneous_isotropic_turbulence.py -h`.
 
 Authors:
 --------
@@ -226,7 +231,7 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
             kwargs['dvScale'] = Sources[0](computeRHS=False)
             t_drv += dt_drv
             if comm.rank == 0:
-                print("------ updated linear forcing pattern ------")
+                print("------ updated dvScale for linear forcing ------")
                 # print(kwargs['dvScale'])
 
         # -- integrate the solution forward in time

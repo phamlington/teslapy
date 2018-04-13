@@ -334,9 +334,10 @@ class spectralLES(object):
             #   2) is strictly positive, and
             #   3) is smooth (infinitely differentiable)
             #      in _both_ physical and spectral space!
-            Ghat[:] = np.where(k_kf < 0.5,
-                               np.exp(-k_kf**2/(0.25-k_kf**2)),
-                               0.0).astype(dtype)
+            with np.errstate(divide='ignore'):
+                Ghat[:] = np.exp(-k_kf**2/(0.25-k_kf**2), where=k_kf < 0.5,
+                                 out=np.zeros_like(k_kf)).astype(dtype)
+
             G = irfft3(self.comm, Ghat)
             G[:] = np.square(G)
             rfft3(self.comm, G, Ghat)
@@ -401,7 +402,9 @@ class spectralLES(object):
         # - Second, scale to Gamie-Ostriker spectrum with kexp and kpeak
         #   and do not excite modes smaller than dk along the shortest
         #   dimension L (kmag < 1.0).
-        self.W_hat *= np.where(kmag<1.0, 0.0, np.power(kmag, kexp-1.0))
+        with np.errstate(divide='ignore'):
+            self.W_hat *= np.power(kmag, kexp-1.0, where=kmag >= 1.0,
+                                   out=np.zeros_like(kmag))
         self.W_hat *= self.les_filter*np.exp(-kmag/kpeak)
 
         return
@@ -471,7 +474,7 @@ class spectralLES(object):
         dvScale: (optional) user-provided linear scaling
         computeRHS: (default=True) add source term to RHS accumulator
         """
-        # Update the HIT forcing function, use omega as vector memory
+        # Update the HIT forcing function
         self.W_hat[:] = self.U_hat*self.hit_filter
 
         if dvScale is None:
