@@ -250,10 +250,14 @@ class ales244_solver(spectralLES):
         tau_hat = self.tau_hat
         UU_hat = self.UU_hat
 
+        irfft3(self.comm, self.les_filter*self.U_hat[0], self.W[0])
+        irfft3(self.comm, self.les_filter*self.U_hat[1], self.W[1])
+        irfft3(self.comm, self.les_filter*self.U_hat[2], self.W[2])
+
         m = 0
         for j in range(3):
             for i in range(j, 3):
-                rfft3(self.comm, self.U[i]*self.U[j], UU_hat[m])
+                rfft3(self.comm, self.W[i]*self.W[j], UU_hat[m])
                 m+=1
 
         # loop over 6 stress tensor components

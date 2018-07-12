@@ -64,9 +64,6 @@ import numpy as np
 __all__ = ['psum', 'rfft3', 'irfft3', 'shell_average', 'y2z_slab_exchange',
            'z2y_slab_exchange']
 
-# if __name__ == "__main__" and __package__ is None:
-#     __package__ = "teslacu.fft_mpi4py_numpy"
-
 
 # 3D real-valued FFTs ---------------------------------------------------------
 def rfft3(comm, u, fu=None):
@@ -240,4 +237,3 @@ def shift_theorem_test(comm, u):
     assert np.allclose(u[:, :, 2:], u_shift[:, :, :-2])
 
     return
-

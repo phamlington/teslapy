@@ -39,7 +39,7 @@ style guide for documentation:
 <https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>
 
 Finally, this module should always strive to achieve enlightenment by
-following the the Zen of Python (PEP 20, just `import this` in a Python
+following the Zen of Python (PEP 20, just `import this` in a Python
 shell) and using idiomatic Python (i.e. 'Pythonic') concepts and design
 patterns.
 
@@ -55,7 +55,7 @@ http://tesla.colorado.edu
 
 from mpi4py import MPI
 import numpy as np
-from math import *
+# from math import sqrt
 import os
 import sys
 # from memory_profiler import profile
@@ -683,7 +683,7 @@ class _hitAnalyzer(_baseAnalyzer):
         alternative routines for many use cases
         """
 
-        A = self.grad(u, order=order)
+        A = self.grad(u)
 
         e = np.zeros((3, 3, 3))
         e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1

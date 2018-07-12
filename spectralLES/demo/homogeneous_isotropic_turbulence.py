@@ -31,7 +31,7 @@ from mpi4py import MPI
 import numpy as np
 import sys
 import time
-from math import *
+from math import sqrt, pi
 import argparse
 from spectralLES import spectralLES
 from teslacu import mpiAnalyzer, mpiWriter
@@ -51,9 +51,11 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
     """
 
     if comm.rank == 0:
-        print("MPI-parallel Python spectralLES simulation of problem "
+        print("\n----------------------------------------------------------")
+        print("MPI-parallel Python spectralLES simulation of problem \n"
               "`Homogeneous Isotropic Turbulence' started with "
               "{} tasks at {}.".format(comm.size, timeofday()))
+        print("----------------------------------------------------------")
 
     # if function called without passing in parsed arguments, then parse
     # the arguments from the command line
@@ -65,8 +67,13 @@ def homogeneous_isotropic_turbulence(pp=None, sp=None):
         sp = spectralLES.parser.parse_known_args()[0]
 
     if comm.rank == 0:
-        print(pp)
-        print(sp)
+        print('\nProblem Parameters:\n-------------------')
+        for k, v in vars(pp).items():
+            print(k, v)
+        print('\nSpectralLES Parameters:\n-----------------------')
+        for k, v in vars(sp).items():
+            print(k, v)
+        print("\n----------------------------------------------------------\n")
 
     assert len(set(pp.N)) == 1, ('Error, this beta-release HIT program '
                                  'requires equal mesh dimensions')

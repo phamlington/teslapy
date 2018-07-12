@@ -24,11 +24,10 @@ Coding Style Guide:
 -------------------
 This module generally adheres to the Python style guide published in
 PEP 8, with the following exceptions:
-- Warning W503 (line break occurred before a binary operator) is
-  ignored, since this warning is backwards and PEP 8 actually recommends
-  breaking before operators rather than after
-- Error E225 (missing whitespace around operator) is ignored because
-  sometimes breaking this rule produces more readable code.
+- Warnings W503/W504 (line break occurred before/after a binary operator)
+- Errors E225/E226 (missing whitespace around operator)
+These codes are not enforced by PEP 8 as a rigorous standard and can be
+safely ignored.
 
 For more information see <http://pep8.readthedocs.org/en/latest/intro.html>
 
@@ -60,7 +59,7 @@ https://github.com/teslacu/spectralLES.git
 """
 from mpi4py import MPI
 import numpy as np
-from math import *
+from math import sqrt, pi
 import argparse
 
 from teslacu.fft import rfft3, irfft3   # FFT transforms
@@ -103,7 +102,6 @@ class LoadInputFile(argparse.Action):
         return
 
 
-###############################################################################
 class spectralLES(object):
     """
     Class Variables:
@@ -168,7 +166,7 @@ class spectralLES(object):
     # Class Constructor -------------------------------------------------------
     def __init__(self, comm, N, L, nu, epsilon, Gtype, **kwargs):
 
-        # process input arguments ---------------------------------------------
+        # process input arguments --------------------------------------
         self.comm = comm
 
         if np.iterable(N):
@@ -208,7 +206,7 @@ class spectralLES(object):
         for name in kwargs:
             setattr(self, name, kwargs[name])
 
-        # compute remaining instance variables from inputs --------------------
+        # compute remaining instance variables from inputs -------------
         # -- MPI Global domain variables (1D Decomposition)
         self.dx = self.L/self.nx
         self.Nx = self.nx.prod()
@@ -260,6 +258,7 @@ class spectralLES(object):
                                        self.Ksq.astype(np.float64))**-1
 
         # -- MPI Local subdomain filter kernel arrays
+        self.dealias = self.filter_kernel(int(sqrt(2)*self.nx.min()/3))
         self.les_filter = self.filter_kernel(self.k_les, Gtype)
         self.test_filter = self.filter_kernel(self.k_test, Gtype)
 
@@ -293,7 +292,6 @@ class spectralLES(object):
         # self.A_hat = np.empty((3, 3, nz, nny, nk), dtype=complex)
 
     # Object-Handling Methods -------------------------------------------------
-
     def __enter__(self):
         # with-statement initialization
         return self
@@ -303,7 +301,6 @@ class spectralLES(object):
         pass
 
     # Instance Methods --------------------------------------------------------
-
     def filter_kernel(self, kf, Gtype='spectral', k_kf=None,
                       dtype=np.complex128):
         """
@@ -405,7 +402,7 @@ class spectralLES(object):
         with np.errstate(divide='ignore'):
             self.W_hat *= np.power(kmag, kexp-1.0, where=kmag >= 1.0,
                                    out=np.zeros_like(kmag))
-        self.W_hat *= self.les_filter*np.exp(-kmag/kpeak)
+        self.W_hat *= self.dealias*np.exp(-kmag/kpeak)
 
         return
 
@@ -496,11 +493,12 @@ class spectralLES(object):
         Takes one keyword argument:
         Cs: (float, optional), Smagorinsky constant
         """
+        self.W_hat[:] = self.les_filter*self.U_hat
         for i in range(3):
             for j in range(3):
                 self.A[j, i] = 0.5*irfft3(self.comm,
-                                          1j*(self.K[j]*self.U_hat[i]
-                                              +self.K[i]*self.U_hat[j]))
+                                          1j*(self.K[j]*self.W_hat[i]
+                                              +self.K[i]*self.W_hat[j]))
 
         # compute SGS flux tensor, nuT = 2|S|(Cs*D)**2
         nuT = self.W[0]
@@ -594,7 +592,7 @@ class spectralLES(object):
                 computeSource(**kwargs)
 
             # Filter the nonlinear contributions to the RHS
-            self.dU *= self.les_filter
+            self.dU *= self.dealias
 
             # Apply the Leray-Hopf projection operator (1 - Helmholtz
             # operator) to filtered nonlinear contributions in order to

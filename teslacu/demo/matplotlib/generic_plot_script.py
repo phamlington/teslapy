@@ -3,19 +3,17 @@
 
 import os
 import time
-from generic_plotting_functions import *
+# from generic_plotting_functions import *
 
 # ddate = '2017_07_29/'
 
-case = 'dns_eps2,0_nu0,0011'
-N = 512
+case = 'les_N64_K30_spec_smag'
+N = 64
 nk = (N/2)+1
-ttags = ['%3.3d' % i for i in range(0, 63, 2)]
+ttags = ['%3.3d' % i for i in range(0, 97, 4)]
 
-data_dir = ('/Users/colin/Google Drive/workspace/data/spectralLES/2017_09_11/'
-            '%s_512/analysis/' % case)
-fig_dir = ('/Users/colin/Google Drive/workspace/media/'
-           'spectralLES/%s' % (time.strftime("%Y_%m_%d")))
+data_dir = ('/Users/colin/workspace/teslapy/spectralLES/demo/analysis/')
+fig_dir = ('/Users/colin/workspace/teslapy/spectralLES/demo/figures/%s' % (time.strftime("%Y_%m_%d")))
 
 try:
     # os.makedirs('%s/pdfs/multirun' % fig_dir)

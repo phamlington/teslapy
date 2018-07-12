@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, MaxNLocator
+import importlib
 # from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # mpl.use('PDF')
@@ -20,7 +21,7 @@ mpl.rcParams['font.family'] = 'serif'
 mpl.rcParams['font.serif'] = ['cm']
 mpl.rc('axes', labelpad=3.0, )
 
-plt = reload(plt)
+plt = importlib.reload(plt)
 
 np.set_printoptions(formatter={'float': '{: .8e}'.format})
 
@@ -333,8 +334,8 @@ def load_histogram(fname):
     try:
         hist *= sqrt(m2-m1**2)/ens_width
     except:
-        print 'broken normalization'
-        print case, ttag, rtag, hist_tag
+        print('broken normalization')
+        print(case, ttag, rtag, hist_tag)
 
     cntrs = np.linspace(ens_min+0.5*ens_width,
                         ens_max-0.5*ens_width, nbins)
@@ -446,7 +447,7 @@ def plot_tseries_spectra(data_dir, fig_dir, prefix, ttags, suffix, nk,
         ki = np.arange(1, nk, dtype=np.float64)
 
         try:
-            spect[1:] *= (ki)**(5./3)/(2.0**(2./3)*(512)**6)
+            spect[1:] *= (ki)**(5./3)
 
             # kl, kc = np.argwhere(cycler == k % cycler.size)[0]
             # kl = k // (len(rtc)//len(ls))
@@ -454,7 +455,6 @@ def plot_tseries_spectra(data_dir, fig_dir, prefix, ttags, suffix, nk,
             # print kl, kc
             ax[3].loglog(ki, spect[1:], label=ttags[k],
                          c=rtc[kc], ls='-', lw=0.75*lwid)
-            ax[3].hold(True)
             if k == nt-1:
                 ax[3].loglog(ki, spect[1:], 'm-', label=ttags[k], lw=1.5*lwid)
 
@@ -463,20 +463,19 @@ def plot_tseries_spectra(data_dir, fig_dir, prefix, ttags, suffix, nk,
 
     try:
         lims = ax[3].axis('tight')
-        ax[3].set_ylim([0.3*max(spect[240], lims[2]), lims[3]*1.5])
-        ax[3].set_xlim([lims[0]/2, lims[1]*2])
-        ax[3].plot([lims[0]/2, lims[1]*2], [1.6, 1.6], 'w:')
+        # ax[3].set_ylim([0.3*max(spect[nk//2], lims[2]), lims[3]*1.5])
+        # ax[3].set_xlim([lims[0]/2, lims[1]*2])
+        # ax[3].plot([lims[0]/2, lims[1]*2], [1.6, 1.6], 'w:')
     except:
         pass
 
-    ax[3].hold(False)
     ax[3].grid(True, ls=':', linewidth=0.5, color='w', alpha=0.2)
     ax[3].set_axisbelow(True)
     ax[3].tick_params(labelsize=fs1)
 
     ax[3].set_xlabel('$k$', fontsize=fs2)
-    ax[3].set_ylabel('$(k^{5/3}\epsilon^{-2/3})%s$'
-                     % sylab, fontsize=fs2)
+    # ax[3].set_ylabel('$(k^{5/3})%s$'
+    #                  % sylab, fontsize=fs2)  # \epsilon^{-2/3}
 
     if title:
         ax[3].set_title(title, fontsize=fs2, x=0.01, y=1.00, loc='left')
