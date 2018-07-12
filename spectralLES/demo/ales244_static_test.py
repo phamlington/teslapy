@@ -23,7 +23,7 @@ from mpi4py import MPI
 import numpy as np
 import sys
 import time
-from math import *
+from math import sqrt
 import argparse
 from spectralLES import spectralLES
 from teslacu import mpiAnalyzer, mpiWriter
@@ -50,9 +50,11 @@ def ales244_static_les_test(pp=None, sp=None):
     """
 
     if comm.rank == 0:
-        print("MPI-parallel Python spectralLES simulation of problem "
+        print("\n----------------------------------------------------------")
+        print("MPI-parallel Python spectralLES simulation of problem \n"
               "`Homogeneous Isotropic Turbulence' started with "
               "{} tasks at {}.".format(comm.size, timeofday()))
+        print("----------------------------------------------------------")
 
     # if function called without passing in parsed arguments, then parse
     # the arguments from the command line
@@ -64,8 +66,13 @@ def ales244_static_les_test(pp=None, sp=None):
         sp = spectralLES.parser.parse_known_args()[0]
 
     if comm.rank == 0:
-        print(pp)
-        print(sp)
+        print('\nProblem Parameters:\n-------------------')
+        for k, v in vars(pp).items():
+            print(k, v)
+        print('\nSpectralLES Parameters:\n-----------------------')
+        for k, v in vars(sp).items():
+            print(k, v)
+        print("\n----------------------------------------------------------\n")
 
     assert len(set(pp.N)) == 1, ('Error, this beta-release HIT program '
                                  'requires equal mesh dimensions')
@@ -249,46 +256,38 @@ class ales244_solver(spectralLES):
                 rfft3(self.comm, self.U[i]*self.U[j], UU_hat[m])
                 m+=1
 
-        m = 0
         # loop over 6 stress tensor components
-        for j in range(3):
-            for i in range(j, 3):
-                tau_hat[m] = H_244[m, 0]  # constant coefficient
-                n = 1
+        for m in range(6):
+            tau_hat[5-m] = H_244[m, 0]  # constant coefficient
 
-                # loop over 27 stencil points
-                for a in range(-1, 2):
-                    for b in range(-1, 2):
-                        for c in range(-1, 2):
-                            # compute stencil shift operator
-                            # dx = 2*pi/N for standard incompressible HIT
-                            # but really shift theorem needs 2*pi/N, not dx
-                            pos = np.array([a, b, c])*self.dx
-                            pos.resize((3, 1, 1, 1))
-                            shift = np.exp(1j*np.sum(self.K*pos, axis=0))
+            # loop over 27 stencil points
+            n = 1
+            for z in range(-1, 2):
+                for y in range(-1, 2):
+                    for x in range(-1, 2):
+                        # compute stencil shift operator.
+                        # NOTE: dx = 2*pi/N for standard incompressible HIT
+                        # but really shift theorem needs 2*pi/N, not dx
+                        pos = np.array([z, y, x])*self.dx
+                        pos.resize((3, 1, 1, 1))
+                        shift = np.exp(1j*np.sum(self.K*pos, axis=0))
 
-                            # 3 ui Volterra series components
-                            for d in range(3):
-                                tau_hat[m] += H_244[m, n]*shift*self.U_hat[d]
-                                n+=1
+                        # 3 ui Volterra series components
+                        for i in range(2, 0, -1):
+                            tau_hat[5-m] += H_244[m, n]*shift*self.U_hat[i]
+                            n+=1
 
-                            # 6 uiuj collocated Volterra series components
-                            p = 0
-                            for e in range(3):
-                                for f in range(e, 3):
-                                    tau_hat[m] += H_244[m, n]*shift*UU_hat[p]
-                                    n+=1
-                                    p+=1
-                # end of nested loops a-f
-
-                m+=1
-        # end of ij loops
+                        # 6 uiuj collocated Volterra series components
+                        for p in range(6):
+                            tau_hat[5-m] += H_244[m, n]*shift*UU_hat[5-p]
+                            n+=1
 
         self.W_hat[:] = 0.0
         m = 0
         for j in range(3):
             for i in range(j, 3):
                 self.W_hat[i] += 1j*(1+(i!=j))*self.K[j]*tau_hat[m]
+                m+=1
 
         self.dU += self.W_hat
 
