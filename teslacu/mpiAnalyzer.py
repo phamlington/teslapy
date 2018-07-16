@@ -65,14 +65,12 @@ from . import stats as tcstats      # statistical functions
 from .diff import central as tcfd   # finite difference functions
 from .diff import akima as tcas     # Akima spline approximation functions
 
-__all__ = ['mpiAnalyzer']
-
-world_comm = MPI.COMM_WORLD
+__all__ = []
 
 
-###############################################################################
-def mpiAnalyzer(comm=world_comm, odir='./analysis/', pid='test', ndims=3,
-                L=[2*np.pi]*3, N=[512]*3, config='hit', **kwargs):
+def mpiAnalyzer(comm=MPI.COMM_WORLD, odir='./analysis/', pid='test', ndims=3,
+                L=[2*np.pi]*3, N=[512]*3, config='hit',
+                method='spline_flux_diff', **kwargs):
     """
     The mpiAnalyzer() function is a "class factory" which returns the
     appropriate mpi-parallel analyzer class instance based upon the
@@ -98,16 +96,15 @@ def mpiAnalyzer(comm=world_comm, odir='./analysis/', pid='test', ndims=3,
 
     kwargs: additional arguments to be handled by the subclasses
 
-    output:
+    Output:
     -------
     Single instance of _baseAnalyzer or one of its subclasses
     """
 
     if config == 'hit':
-        method = kwargs['method']
         analyzer = _hitAnalyzer(comm, odir, pid, ndims, L, N, method)
     elif config is None:
-        analyzer = _baseAnalyzer(comm, odir, pid, ndims, L, N)
+        analyzer = _baseAnalyzer(comm, odir, pid, ndims, L, N, method)
     else:
         if comm.rank == 0:
             print("mpiAnalyzer.factory configuration arguments not recognized!"
@@ -117,13 +114,12 @@ def mpiAnalyzer(comm=world_comm, odir='./analysis/', pid='test', ndims=3,
     return analyzer
 
 
-###############################################################################
 class _baseAnalyzer(object):
     """
     class _baseAnalyzer(object) ...
     """
 
-    def __init__(self, comm, odir, pid, ndims, L, N):
+    def __init__(self, comm, odir, pid, ndims, L, N, method):
 
         # "Protected" variables masked by property method
         self._odir = odir
@@ -195,8 +191,18 @@ class _baseAnalyzer(object):
 
         self.mpi_moments_file = '%s%s.moments' % (self.odir, self.prefix)
 
-    # Class Properities -------------------------------------------------------
+        if method == 'central_diff':
+            self.deriv = self._centdiff_deriv
+        elif method == 'spline_flux_diff':
+            self.deriv = self._akima_deriv
+        else:
+            if comm.rank == 0:
+                print("mpiAnalyzer._baseAnalyzer.__init__(): "
+                      "'method' argument not recognized!\n"
+                      "Defaulting to Akima spline flux differencing.")
+            self.deriv = self._akima_deriv
 
+    # Class Properities -------------------------------------------------------
     def __enter__(self):
         # with statement initialization
         return self
@@ -238,7 +244,6 @@ class _baseAnalyzer(object):
         return self._nx
 
     # Statistical Moments -----------------------------------------------------
-
     def psum(self, data):
         return tcstats.psum(data)
 
@@ -297,8 +302,7 @@ class _baseAnalyzer(object):
 
         return (gmin, gmax)
 
-# Histograms ------------------------------------------------------------------
-
+    # Histograms --------------------------------------------------------------
     def mpi_histogram1(self, var, fname, metadata='', range=None,
                        bins=100, w=None, wbar=None, m1=None, norm=1.0):
         """MPI-distributed univariate spatial histogram."""
@@ -351,7 +355,6 @@ class _baseAnalyzer(object):
         return m
 
     # Data Transposing --------------------------------------------------------
-
     def z2y_slab_exchange(self, var):
         """
         Domain decomposition 'transpose' of MPI-distributed scalar array.
@@ -388,8 +391,155 @@ class _baseAnalyzer(object):
 
         return temp
 
+    # Scalar and Vector Derivatives -------------------------------------------
+    def div(self, var):
+        """
+        Calculate and return the divergence of a vector field.
 
-###############################################################################
+        Currently the slab_exchange routines limit this function to vector
+        fields.
+        """
+        div = np.ascontiguousarray(self.deriv(var[0], dim=0))  # axis=2
+        div+= self.deriv(var[1], dim=1)   # axis=1
+        div+= self.deriv(var[2], dim=2)   # axis=0
+        return div
+
+    def curl(self, var):
+        """
+        Calculate and return the curl of a vector field.
+        """
+
+        if var.ndim == 5:   # var is the gradient tensor field
+            e = np.zeros((3, 3, 3))
+            e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1
+            e[0, 2, 1] = e[2, 1, 0] = e[1, 0, 2] = -1
+            omega = np.einsum('ijk,jk...->i...', e, var)
+
+        elif var.ndim == 4:     # var is the vector field
+            omega = np.empty_like(var)
+            omega[0] = self.deriv(var[1], dim=2)
+            omega[0]-= self.deriv(var[2], dim=1)
+
+            omega[1] = self.deriv(var[2], dim=0)
+            omega[1]-= self.deriv(var[0], dim=2)
+
+            omega[2] = self.deriv(var[0], dim=1)
+            omega[2]-= self.deriv(var[1], dim=0)
+        else:
+            raise
+
+        return omega
+
+    def scl_grad(self, var):
+        """
+        Calculate and return the gradient vector field of a scalar field.
+        """
+
+        shape = list(var.shape)
+        shape.insert(0, 3)
+        grad = np.empty(shape, dtype=var.dtype)
+
+        grad[0] = self.deriv(var, dim=0)
+        grad[1] = self.deriv(var, dim=1)
+        grad[2] = self.deriv(var, dim=2)
+
+        return grad
+
+    def grad(self, var):
+        """
+        Calculate and return the gradient tensor field of a vector field.
+        """
+
+        shape = list(var.shape)
+        shape.insert(0, 3)
+        A = np.empty(shape, dtype=var.dtype)
+
+        for j in range(3):
+            for i in range(3):
+                A[j, i] = self.deriv(var[i], dim=j)
+
+        return A
+
+    def grad_curl_div(self, u):
+        """
+        Uses numpy.einsum which can be dramatically faster than
+        alternative routines for many use cases
+        """
+
+        A = self.grad(u)
+
+        e = np.zeros((3, 3, 3))
+        e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1
+        e[0, 2, 1] = e[2, 1, 0] = e[1, 0, 2] = -1
+        omega = np.einsum('ijk,jk...->i...', e, A)
+
+        Aii = np.einsum('ii...', A)
+
+        return A, omega, Aii
+
+    # Underlying Linear Algebra Routines --------------------------------------
+    def _centdiff_deriv(self, var, dim=0, k=1):
+        """
+        Calculate and return the specified derivative of a 3D scalar field at
+        the specified order of accuracy.
+        While k is passed on to the central_deriv function in the teslacu
+        finite difference module, central_deriv may not honor a request for
+        anything but the first derivative, depending on it's state of
+        development.
+        """
+        dim = dim % 3
+        axis = 2-dim
+        if axis == 0:
+            var = self.z2y_slab_exchange(var)
+
+        deriv = tcfd.central_deriv(var, self.dx[axis], bc='periodic',
+                                   k=k, order=4, axis=axis)
+        if axis == 0:
+            deriv = self.y2z_slab_exchange(deriv)
+
+        return deriv
+
+    def _akima_deriv(self, var, dim=0, k=1):
+        """
+        Calculate and return the _first_ derivative of a 3D scalar field.
+        The k parameter is ignored, a first derivative is _always_ returned.
+        """
+        dim = dim % 3
+        axis = 2-dim
+        if axis == 0:
+            var = self.z2y_slab_exchange(var)
+
+        deriv = tcas.deriv(var, self.dx[axis], axis=axis)
+
+        if axis == 0:
+            deriv = self.y2z_slab_exchange(deriv)
+
+        return deriv
+
+    def _fft_deriv(self, var, dim=0, k=1):
+        """
+        Calculate and return the specified derivative of a 3D scalar field.
+        This function uses 1D FFTs and MPI-decomposed transposing instead of
+        MPI-decomposed 3D FFTs.
+        """
+        dim = dim % 3
+        axis = 2-dim
+        s = [1]*var.ndim
+        s[axis] = self.k1.shape[0]
+        K = self.k1.reshape(s)
+
+        if axis == 0:
+            var = self.z2y_slab_exchange(var)
+
+        deriv = np.fft.irfft(
+                    np.power(1j*K, k)*np.fft.rfft(var, axis=axis), axis=axis)
+
+        if axis == 0:
+            deriv = self.y2z_slab_exchange(deriv)
+
+        return deriv
+
+
 class _hitAnalyzer(_baseAnalyzer):
     """
     class _hitAnalyzer(_baseAnalyzer)
@@ -606,159 +756,3 @@ class _hitAnalyzer(_baseAnalyzer):
 
     def vector_filter(self, u, Ghat):
         return self.vec_ifft(Ghat*self.vec_fft(u))
-
-# Scalar and Vector Derivatives -----------------------------------------------
-
-    def div(self, var):
-        """
-        Calculate and return the divergence of a vector field.
-
-        Currently the slab_exchange routines limit this function to vector
-        fields.
-        """
-        div = self.deriv(var[0], dim=0)  # axis=2
-        div+= self.deriv(var[1], dim=1)  # axis=1
-        div+= self.deriv(var[2], dim=2)  # axis=0
-        return div
-
-    def curl(self, var):
-        """
-        Calculate and return the curl of a vector field.
-        """
-
-        if var.ndim == 5:   # var is the gradient tensor field
-            e = np.zeros((3, 3, 3))
-            e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1
-            e[0, 2, 1] = e[2, 1, 0] = e[1, 0, 2] = -1
-            omega = np.einsum('ijk,jk...->i...', e, var)
-
-        elif var.ndim == 4:     # var is the vector field
-            omega = np.empty_like(var)
-            omega[0] = self.deriv(var[1], dim=2)
-            omega[0]-= self.deriv(var[2], dim=1)
-
-            omega[1] = self.deriv(var[2], dim=0)
-            omega[1]-= self.deriv(var[0], dim=2)
-
-            omega[2] = self.deriv(var[0], dim=1)
-            omega[2]-= self.deriv(var[1], dim=0)
-        else:
-            raise
-
-        return omega
-
-    def scl_grad(self, var):
-        """
-        Calculate and return the gradient vector field of a scalar field.
-        """
-
-        shape = list(var.shape)
-        shape.insert(0, 3)
-        grad = np.empty(shape, dtype=var.dtype)
-
-        grad[0] = self.deriv(var, dim=0)
-        grad[1] = self.deriv(var, dim=1)
-        grad[2] = self.deriv(var, dim=2)
-
-        return grad
-
-    def grad(self, var):
-        """
-        Calculate and return the gradient tensor field of a vector field.
-        """
-
-        shape = list(var.shape)
-        shape.insert(0, 3)
-        A = np.empty(shape, dtype=var.dtype)
-
-        for j in range(3):
-            for i in range(3):
-                A[j, i] = self.deriv(var[i], dim=j)
-
-        return A
-
-    def grad_curl_div(self, u):
-        """
-        Uses numpy.einsum which can be dramatically faster than
-        alternative routines for many use cases
-        """
-
-        A = self.grad(u)
-
-        e = np.zeros((3, 3, 3))
-        e[0, 1, 2] = e[1, 2, 0] = e[2, 0, 1] = 1
-        e[0, 2, 1] = e[2, 1, 0] = e[1, 0, 2] = -1
-        omega = np.einsum('ijk,jk...->i...', e, A)
-
-        Aii = np.einsum('ii...', A)
-
-        return A, omega, Aii
-
-# Underlying Linear Algebra Routines ------------------------------------------
-    # Note that the FFT derivative does not rely on the teslacu FFT package
-    # This allows FFT-based derivatives to conform to a consistent deriv
-    # template for all types of numerical differentiation.
-    # The 'k' parameter asks for the order of the derivative, but only the FFT
-    # derivative can provide any order derivative to the user.
-
-    # @profile
-    def _centdiff_deriv(self, var, dim=0, k=1):
-        """
-        Calculate and return the specified derivative of a 3D scalar field at
-        the specified order of accuracy.
-        While k is passed on to the central_deriv function in the teslacu
-        finite difference module, central_deriv may not honor a request for
-        anything but the first derivative, depending on it's state of
-        development.
-        """
-        dim = dim % 3
-        axis = 2-dim
-        if axis == 0:
-            var = self.z2y_slab_exchange(var)
-
-        deriv = tcfd.central_deriv(var, self.dx[axis], bc='periodic',
-                                   k=k, order=4, axis=axis)
-        if axis == 0:
-            deriv = self.y2z_slab_exchange(deriv)
-
-        return deriv
-
-    def _akima_deriv(self, var, dim=0, k=1):
-        """
-        Calculate and return the _first_ derivative of a 3D scalar field.
-        The k parameter is ignored, a first derivative is _always_ returned.
-        """
-        dim = dim % 3
-        axis = 2-dim
-        if axis == 0:
-            var = self.z2y_slab_exchange(var)
-
-        deriv = tcas.deriv(var, self.dx[axis], axis=axis)
-
-        if axis == 0:
-            deriv = self.y2z_slab_exchange(deriv)
-
-        return deriv
-
-    def _fft_deriv(self, var, dim=0, k=1):
-        """
-        Calculate and return the specified derivative of a 3D scalar field.
-        This function uses 1D FFTs and MPI-decomposed transposing instead of
-        MPI-decomposed 3D FFTs.
-        """
-        dim = dim % 3
-        axis = 2-dim
-        s = [1]*var.ndim
-        s[axis] = self.k1.shape[0]
-        K = self.k1.reshape(s)
-
-        if axis == 0:
-            var = self.z2y_slab_exchange(var)
-
-        deriv = np.fft.irfft(
-                    np.power(1j*K, k)*np.fft.rfft(var, axis=axis), axis=axis)
-
-        if axis == 0:
-            deriv = self.y2z_slab_exchange(deriv)
-
-        return deriv

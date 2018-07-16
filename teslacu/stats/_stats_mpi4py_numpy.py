@@ -14,7 +14,8 @@ def psum(data):
     input argument data can be any n-dimensional array-like object, including
     a 0D scalar value or 1D array.
     """
-    psum = np.array(data)
+
+    psum = np.array(data)  # np.array hard-copies, np.asarray might just point
     for n in range(psum.ndim):
         psum.sort(axis=-1)
         psum = np.sum(psum, axis=-1)
@@ -31,6 +32,7 @@ def central_moments(comm, N, data, w=None, wbar=None, m1=None):
     If you've already calculated the mean of w, save some computations and pass
     it in as wbar.
     """
+
     gmin = comm.allreduce(np.nanmin(data), op=MPI.MIN)
     gmax = comm.allreduce(np.nanmax(data), op=MPI.MAX)
 
@@ -100,22 +102,6 @@ def histogram2(comm, var1, var2, xrange=None, yrange=None, bins=50, w=None):
     Constructs the 2D histogram (probability mass function) of two MPI-
     decomposed data sets.
     """
-
-    # is_finite = np.all(np.isfinite(var1))
-    # is_finite = comm.allreduce(is_finite, op=MPI.LAND)
-    # if not is_finite:
-    #     if comm.rank == 0:
-    #         raise ValueError('Histogram2 var1 contains non-finite values!')
-    #     MPI.Finalize()
-    #     sys.exit(999)
-
-    # is_finite = np.all(np.isfinite(var2))
-    # is_finite = comm.allreduce(is_finite, op=MPI.LAND)
-    # if not is_finite:
-    #     if comm.rank == 0:
-    #         raise ValueError('Histogram2 var2 contains non-finite values!')
-    #     MPI.Finalize()
-    #     sys.exit(999)
 
     if xrange is None:
         gmin1 = comm.allreduce(np.min(var1), op=MPI.MIN)

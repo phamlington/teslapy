@@ -34,10 +34,9 @@ http://tesla.colorado.edu
 """
 from mpi4py import MPI
 import numpy as np
-from math import *
-
-from teslacu import mpiAnalyzer, mpiReader
-from single_comm_functions import *
+# from math import sqrt
+import sys
+from teslacu import mpiAnalyzer, mpiReader, get_inputs, timeofday
 
 comm = MPI.COMM_WORLD
 
@@ -55,8 +54,8 @@ def spectralLES_post_process(args):
 
     if N % comm.size > 0:
         if comm.rank == 0:
-            print ('Job started with improper number of MPI tasks for the '
-                   'size of the data specified!')
+            print('Job started with improper number of MPI tasks for the '
+                  'size of the data specified!')
         MPI.Finalize()
         sys.exit(1)
 
@@ -78,7 +77,7 @@ def spectralLES_post_process(args):
     u = np.empty(s, dtype=np.float64)
     analyzer.tol = 1.0e-16
 
-    for it in xrange(its, ite+1, tint):
+    for it in range(its, ite+1, tint):
         tstep = str(it).zfill(3)
 
         u[0] = reader.read_variable('Velocity1_%s.rst' % tstep,
@@ -89,16 +88,16 @@ def spectralLES_post_process(args):
                                     ftype=np.float64)
 
         if comm.rank % 64 == 0:
-            print (update(timeofday(), tstep, 0, comm.rank)
-                   % 'variables loaded into memory')
+            print(update(timeofday(), tstep, 0, comm.rank)
+                  % 'variables loaded into memory')
 
         analyzer.spectral_density(u, 'u', 'velocity PSD', Ek_fmt('u_i'))
 
         # if comm.rank == 0:
 
     if comm.rank == 0:
-        print ("Python MPI job `spectralLES_post_process'"
-               " finished at "+timeofday())
+        print("Python MPI job `spectralLES_post_process'"
+              " finished at "+timeofday())
 
 
 if __name__ == "__main__":

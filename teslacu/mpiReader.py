@@ -46,7 +46,7 @@ import numpy as np
 # from vtk import vtkStructuredPointsReader
 # from vtk.util import numpy_support as vn
 
-__all__ = ['mpiReader']
+__all__ = []
 
 
 def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', ndims=3,
