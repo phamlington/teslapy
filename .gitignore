@@ -1,10 +1,4 @@
-*.pyc
-*/*.pyc
-*/*/*.pyc
-__pycache__
-*/__pycache__
-*/*/__pycache__
-teslapy.sublime-project
-*/*.sublime-project
-teslapy.sublime-workspace
-*/*.sublime-workspace
+**.pyc
+**/__pycache__
+**.sublime-project
+**.sublime-workspace
