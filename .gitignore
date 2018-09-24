@@ -2,3 +2,7 @@
 **.pyc
 __pycache__
 */__pycache__
+*.sublime-project
+**.sublime-project
+*.sublime-workspace
+**.sublime-workspace
