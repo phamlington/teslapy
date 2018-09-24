@@ -1,8 +1,8 @@
 from .mpiAnalyzer import mpiAnalyzer
 from .mpiReader import mpiReader
 from .mpiWriter import mpiWriter
-from .analysis_functions import timeofday, get_inputs, scalar_analysis
-from .analysis_functions import vector_analysis, gradient_analysis
+from .helper_functions import timeofday, get_inputs, scalar_analysis
+from .helper_functions import vector_analysis, gradient_analysis
 
 from . import fft
 from . import stats

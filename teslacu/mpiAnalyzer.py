@@ -136,13 +136,13 @@ class _baseAnalyzer(object):
         # Global domain variables
         if np.iterable(N):
             if len(N) == 1:
-                self._nx = np.array(list(N)*ndims, dtype=int)
+                self._nx = np.array(list(N)*ndims, dtype=np.int)
             elif len(N) == ndims:
-                self._nx = np.array(N, dtype=int)
+                self._nx = np.array(N, dtype=np.int)
             else:
                 raise IndexError("The length of N must be either 1 or ndims")
         else:
-            self._nx = np.array([int(N)]*ndims, dtype=int)
+            self._nx = np.array([N]*ndims, dtype=np.int)
 
         if np.iterable(L):
             if len(L) == 1:
@@ -152,15 +152,14 @@ class _baseAnalyzer(object):
             else:
                 raise IndexError("The length of L must be either 1 or ndims")
         else:
-            self._L = np.array([float(L)]*ndims)
+            self._L = np.array([L]*ndims, dtype=np.float)
 
         self.dx = self._L/self._nx
         self.Nx = self._nx.prod()
-        self.Nxinv = 1.0/self.Nx
 
         # Local subdomain variables (1D Decomposition)
         self.nnx = self._nx.copy()
-        self.ixs = np.zeros(ndims, dtype=int)
+        self.ixs = np.zeros(ndims, dtype=np.int)
         self.ixe = self._nx.copy()
 
         self.nnx[0] = self._nx[0]//self.comm.size
@@ -195,6 +194,8 @@ class _baseAnalyzer(object):
             self.deriv = self._centdiff_deriv
         elif method == 'spline_flux_diff':
             self.deriv = self._akima_deriv
+        elif method == 'ignore':
+            self.deriv = None
         else:
             if comm.rank == 0:
                 print("mpiAnalyzer._baseAnalyzer.__init__(): "
@@ -259,13 +260,13 @@ class _baseAnalyzer(object):
                           m1=None, norm=1.0):
         """Compute min, max, mean, and 2nd-6th (biased) central
         moments for assigned spatial field"""
-        m1, c2, c3, c4, c5, c6, gmin, gmax = tcstats.central_moments(
+        m1, c2, c3, c4, gmin, gmax = tcstats.central_moments(
                             self.comm, self.Nx*norm, data, w, wbar, m1)
 
         if self.comm.rank == 0:
-            fh = open(self.mpi_moments_file, 'a')
-            fh.write(('{:s}\t%s\n' % '{:13.8e}'*6)
-                     .format(label, m1, c2, c3, c4, gmin, gmax))
+            with open(self.mpi_moments_file, 'a') as fh:
+                fh.write(('{:s}\t%s\n' % '  '.join(['{:14.8e}']*6))
+                         .format(label, m1, c2, c3, c4, gmin, gmax))
 
         return m1, c2, c3, c4, gmin, gmax
 
@@ -309,19 +310,19 @@ class _baseAnalyzer(object):
 
         # get histogram and statistical moments (every task gets the results)
         # result = (hist, u1, c2, g3, g4, g5, g6, gmin, gmax, width)
-        result = tcstats.histogram1(self.comm, self.Nx*norm,
-                                    var, range, bins, w, wbar, m1)
-        hist = result[0]
-        gmin, gmax, width = result[1:4]
-        m = result[4:]
+        results = tcstats.histogram1(self.comm, self.Nx*norm,
+                                     var, range, bins, w, wbar, m1)
+        hist = results[0]
+        gmin, gmax, width = results[-3:]
+        m = results[1:-3]
 
         # write histogram from root task
         if self.comm.rank == 0:
             fh = open('%s%s%s.hist' % (self.odir, self.prefix, fname), 'w')
             fh.write('%s\n' % metadata)
-            fmt = '%s\n' % '  '.join(['{:14.8e}']*len(m)).format
+            fmt = ('%s\n' % '  '.join(['{:14.8e}']*len(m))).format
             fh.write(fmt(*m))
-            fmt = '%d  %s\n' % '  '.join(['{:14.8e}']*3).format
+            fmt = ('{:d}  %s\n' % '  '.join(['{:14.8e}']*3)).format
             fh.write(fmt(bins, width, gmin, gmax))
             hist.tofile(fh, sep='\n', format='%14.8e')
             fh.close()
@@ -345,7 +346,7 @@ class _baseAnalyzer(object):
 
         # write histogram from root task
         if self.comm.rank == 0:
-            fmt = '%d  %s\n' % '  '.join(['{:14.8e}']*len(m)).format
+            fmt = ('%d  %s\n' % '  '.join(['{:14.8e}']*len(m))).format
             fh = open('%s%s%s.hist2d' % (self.odir, self.prefix, fname), 'w')
             fh.write('%s\n' % metadata)
             fh.write(fmt(bins, *m))
@@ -385,7 +386,7 @@ class _baseAnalyzer(object):
 
         temp = np.empty([self.comm.size, nnz, nny, nx], dtype=varT.dtype)
 
-        self.comm.Alltoall(temp, varT.reshape(temp.shape))  # send, receive
+        self.comm.Alltoall(varT.reshape(temp.shape), temp)  # send, receive
         temp.resize([nnz, ny, nx])
         temp[:] = np.rollaxis(temp, 1).reshape(temp.shape)
 
@@ -399,7 +400,7 @@ class _baseAnalyzer(object):
         Currently the slab_exchange routines limit this function to vector
         fields.
         """
-        div = np.ascontiguousarray(self.deriv(var[0], dim=0))  # axis=2
+        div = self.deriv(var[0], dim=0)   # axis=2
         div+= self.deriv(var[1], dim=1)   # axis=1
         div+= self.deriv(var[2], dim=2)   # axis=0
         return div
@@ -546,9 +547,9 @@ class _hitAnalyzer(_baseAnalyzer):
         ...
     """
 
-    def __init__(self, comm, odir, pid, ndims, L, N, method='akima'):
+    def __init__(self, comm, odir, pid, ndims, L, N, method):
 
-        super().__init__(comm, odir, pid, ndims, L, N)
+        super().__init__(comm, odir, pid, ndims, L, N, 'ignore')
 
         self._config = "Homogeneous Isotropic Turbulence"
         self._periodic = [True]*ndims
@@ -577,7 +578,7 @@ class _hitAnalyzer(_baseAnalyzer):
         self.K = np.array(np.meshgrid(k3, k2, k1, indexing='ij'))
         self.Ksq = np.sum(np.square(self.K), axis=0)
         self.k = np.sqrt(self.Ksq)
-        self.km = (self.k/dk).astype(int)
+        self.km = (self.k//dk).astype(int)
         self.k1 = k1
 
         if method == 'central_diff':
@@ -626,19 +627,16 @@ class _hitAnalyzer(_baseAnalyzer):
             spect1d.tofile(fh, sep='\n', format='% .8e')
             fh.close()
 
-            self.comm.Barrier()
-        else:
-            self.comm.Barrier()
-
         return spect1d
 
     def integral_scale(self, Ek):
         """
         Computes the integral scale from the standard formula,
-        ell = (pi/2*u'^2)*Int{Ek/k} (angular wavenumbers)
-            = (3/8)*Int{Ek/k}/Int{Ek} (ordinary wavenumbers)
+        where u'^2 = 2/3*Int{Ek}
+        ell = (pi/2)*(1/u'^2)*Int{Ek/k}
+            = 3*pi/4*Int{Ek/k}/Int{Ek}
         """
-        return 0.375*self.psum(Ek[1:]/self.k1[1:])/self.psum(Ek[1:])
+        return 0.75*np.pi*self.psum(Ek[1:]/self.k1[1:])/self.psum(Ek[1:])
 
     def scl_fft(self, var):
         """

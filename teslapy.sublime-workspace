@@ -1,0 +1,425 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"set",
+				"set_initial_time\tfunction"
+			],
+			[
+				"cv_",
+				"cv_ti_te\tstatement"
+			],
+			[
+				"LDf",
+				"LDf128\tstatement"
+			],
+			[
+				"M",
+				"MinorSymLogLocator\tclass"
+			],
+			[
+				"import",
+				"import_spect\tfunction"
+			],
+			[
+				"det",
+				"detonation_params\tfunction"
+			],
+			[
+				"ZND",
+				"ZND_ode_sys\tfunction"
+			],
+			[
+				"get_temp",
+				"get_temperature_and_pressure\tfunction"
+			],
+			[
+				"gra",
+				"gradient_analysis"
+			],
+			[
+				"ve",
+				"vector_analysis"
+			],
+			[
+				"set_",
+				"set_constants_and_allocate_arrays"
+			],
+			[
+				"auto",
+				"autoignite_pathlines_topaz\tfunction"
+			],
+			[
+				"ntraj",
+				"ntraj_per_file\tstatement"
+			]
+		]
+	},
+	"buffers":
+	[
+	],
+	"build_system": "",
+	"build_system_choices":
+	[
+		[
+			[
+				[
+					"Packages/Fortran/build-systems/GFortran.sublime-build",
+					""
+				],
+				[
+					"Packages/Fortran/build-systems/GFortran.sublime-build",
+					"Run"
+				]
+			],
+			[
+				"Packages/Fortran/build-systems/GFortran.sublime-build",
+				"Run"
+			]
+		]
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"sublime",
+				"SublimeLinter: Reload SublimeLinter and its Plugins"
+			],
+			[
+				"update",
+				"Package Control: Upgrade/Overwrite All Packages"
+			],
+			[
+				"install",
+				"Package Control: Install Package"
+			],
+			[
+				"upda",
+				"Package Control: Upgrade Package"
+			],
+			[
+				"lint",
+				"SublimeLinter: Lint This View"
+			],
+			[
+				"upgrade",
+				"Package Control: Upgrade/Overwrite All Packages"
+			],
+			[
+				"up",
+				"Package Control: Upgrade Package"
+			],
+			[
+				"inst",
+				"Package Control: Install Package"
+			],
+			[
+				"remov",
+				"Package Control: Remove Package"
+			],
+			[
+				"",
+				"Package Control: Remove Package"
+			],
+			[
+				"Install",
+				"Package Control: Install Package"
+			]
+		],
+		"width": 0.0
+	},
+	"console":
+	{
+		"height": 389.0,
+		"history":
+		[
+			"clc",
+			"clear",
+			"view.settings().get('syntax').lower()",
+			"view.settings().get('syntax').lower(",
+			"view.settings().get('syntax').lower()"
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"expanded_folders":
+	[
+		"/Users/colin/workspace/teslapy"
+	],
+	"file_history":
+	[
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/autoignition_chemical_statistics.py",
+		"/Users/colin/workspace/teslapy/spectralLES/__init__.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/H2_san_diego.ignition.tab",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/M0,1_K512_T800.ignition.tab",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/H2_san_diego.inert.tab",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/H2_san_diego.inert_air.tab",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/M0,05_K1024_T1600.ignition.tab",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/hstfile_autoignite_inert_plots.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/spectral_refill_scaling_plots.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/M0,6_K1024.ignition.tab",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/M0,4_K1024.ignition.tab",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/M0,2_K1024.ignition.tab",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_turbflame_cantera.py",
+		"/Users/colin/workspace/teslapy/teslacu/mpiAnalyzer.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/postshock.py",
+		"/Users/colin/conda/envs/py36/lib/python3.6/site-packages/sdtoolbox/znd.py",
+		"/Users/colin/conda/envs/py36/lib/python3.6/site-packages/sdtoolbox/demo/demo_ZNDCJ.py",
+		"/Users/colin/Google Drive/workspace/code/shell_scripts/EXEC_AUTOIGNITE_CHEMICAL_ONYX",
+		"/Users/colin/conda/envs/py36/lib/python3.6/site-packages/sdtoolbox/thermo.py",
+		"/Users/colin/conda/envs/py36/lib/python3.6/site-packages/sdtoolbox/postshock.py",
+		"/Users/colin/workspace/sdtoolbox-colin/znd.py",
+		"/Users/colin/workspace/sdtoolbox-colin/cazt_demo_ZND.py",
+		"/Users/colin/workspace/teslapy/teslacu/diff/_akima_numpy_scipy.py",
+		"/Users/colin/workspace/sdtoolbox-colin/postshock.py",
+		"/Users/colin/Google Drive/workspace/code/python/lagrangian_analysis/autoignite_pathlines_topaz.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_autoignition_arrhenius.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/hstfile_autoignite_arrhenius_plots.py",
+		"/Users/colin/Google Drive/workspace/code/python/lagrangian_analysis/nonpremix_pathline_processing.py",
+		"/Users/colin/workspace/fortran/cemaCalc_v1/Makefile",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/autoignition_arrhenius_statistics.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/new_autoignite_pathline_plots.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/convergence_plotting.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/dTdx_scaling.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/hstfile_autoignite_chemical_plots.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/autoignite_chemical_plotting.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/archive/multi_comm_plotting_functions.py",
+		"/Users/colin/workspace/teslapy/spectralLES/demo/ales244_static_test.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/archive/euler_hit_plot_script.py",
+		"/Users/colin/workspace/teslapy/spectralLES/demo/HIT_demo_inputs.txt",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/general_plotting.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/autoignition_AIAA_plotting.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/autoignition_plot_script.py",
+		"/Users/colin/workspace/teslapy/teslacu/demo/matplotlib/generic_plotting_functions.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/archive/dns_conv_plot_script2.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/archive/dns_conv_plot_script1.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/hot_spot_regime_diagram.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/convergence_plot_script.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/hstfile_autoignite_adiabatic_plots.py",
+		"/Users/colin/workspace/teslapy/teslacu/helper_functions.py",
+		"/Users/colin/workspace/teslapy/spectralLES/spectralLES.py",
+		"/Users/colin/workspace/teslapy/teslacu/mpiReader.py",
+		"/Users/colin/workspace/teslapy/teslacu/stats/_stats_mpi4py_numpy.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/autoignite_chemical_plots.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/turbulence_chemical_statistics.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/nonpremix_chemical_statistics.py",
+		"/Users/colin/workspace/teslapy/teslacu/demo/spectralLES/post_process.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/archive/dns_statistical_analysis.py",
+		"/Users/colin/workspace/teslapy/teslacu/fft/_fft_mpi4py_numpy.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/archive/scraps/mpiAnalyzer.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/autoignition_chemical_slices.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/archive/convergence_analysis.py",
+		"/Users/colin/conda/lib/python3.6/site-packages/sdtoolbox/znd.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_hit_arrhenius.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_hit_cantera.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_autoignition_cantera.py",
+		"/Users/colin/Google Drive/workspace/code/shell_scripts/EXEC_ENSEMBLE_HIT",
+		"/Users/colin/Google Drive/workspace/code/python/archive/sim_params_adiabatic_hit.py",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/autoignition_lagrange_plot_script.py",
+		"/Users/colin/workspace/sdtoolbox-0.1.5/znd.py",
+		"/Users/colin/workspace/sdtoolbox-0.1.5/cazt_demo_ZND.py",
+		"/Users/colin/workspace/sdtoolbox-0.1.5/utilities.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_turbflame_arrhenius.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_cantera_turbflame.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/turbflame_chemical_slices.py",
+		"/Users/colin/Library/Application Support/Sublime Text 3/Packages/User/Sunburst (SublimePythonIDE).tmTheme",
+		"/Users/colin/Google Drive/workspace/code/python/plotting/reaction_profiles/M0,6_K1024_0d_profiles.npz",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_arrhenius_hit.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_nonpremix_autoignition.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/data_managers/combine_hst_files.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/data_managers/truncate_hst_files.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_cantera_autoignition.py",
+		"/Users/colin/Google Drive/workspace/code/shell_scripts/EXEC_AUTOIGNITE_CHEMICAL_TOPAZ",
+		"/Users/colin/Google Drive/workspace/code/shell_scripts/THUNDER_EXEC_CONV_HIT",
+		"/Users/colin/workspace/teslapy/teslacu/__init__.py",
+		"/Users/colin/Google Drive/workspace/code/python/archive/sim_params_chemical_hit.py",
+		"/Users/colin/Google Drive/workspace/code/python/simulation_parameters/sim_params_arrhenius_turbflame.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/turbflame_arrhenius_slices.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/turbulence_chemical_analysis.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/autoignition_statistical_analysis.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/derived_variable_preprocess.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/dns_statistical_analysis.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/autoignition_chemical_analysis.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/analysis_functions.py",
+		"/Users/colin/Google Drive/workspace/code/python/athena_analysis/single_comm_functions.py",
+		"/Users/colin/workspace/teslapy/teslacu/diff/_findiff_numpy_scipy.py",
+		"/Users/colin/workspace/teslapy/teslacu/demo/spectralLES/single_comm_functions.py",
+		"/Users/colin/workspace/teslapy/spectralLES/demo/homogeneous_isotropic_turbulence.py",
+		"/Users/colin/workspace/teslapy/spectralLES/demo/h_ij.dat",
+		"/Users/colin/workspace/teslapy/teslacu/README.md",
+		"/Users/colin/workspace/Athena-RFX.3.7.2/src/reactions.c",
+		"/Users/colin/workspace/Athena-RFX.3.7.2/src/reactions/H2_san_diego/H2_san_diego.c",
+		"/Users/colin/workspace/Lagrangian-Analysis/athena_turbflame_pathlines/makefile",
+		"/Users/colin/Library/Application Support/Sublime Text 3/Packages/Fortran/linter.py",
+		"/Users/colin/workspace/Lagrangian-Analysis/athena_turbflame_pathlines/pathlines_ath_bin_blocks.f90",
+		"/Users/colin/workspace/Lagrangian-Analysis/shared_modules/akima_spline_lib_mod.f90",
+		"/Users/colin/workspace/Lagrangian-Analysis/shared_modules/lagcalc_mod.f90",
+		"/Users/colin/workspace/Lagrangian-Analysis/shared_modules/athena_mpif_lib_mod.f90",
+		"/Users/colin/workspace/Lagrangian-Analysis/shared_modules/tesla_mpif_lib_mod.f90",
+		"/Users/colin/workspace/Lagrangian-Analysis/shared_modules/tesla_f_lib_mod.f90",
+		"/Users/colin/workspace/Lagrangian-Analysis/shared_modules/athena_f_lib_mod.f90",
+		"/Users/colin/Library/Application Support/Sublime Text 3/Packages/User/Side Bar.sublime-settings",
+		"/Users/colin/Library/Application Support/Sublime Text 3/Packages/SublimeLinter-gcc/CHANGELOG.md",
+		"/Users/colin/Library/Application Support/Sublime Text 3/Packages/SublimeLinter-gcc/README.md",
+		"/Users/colin/Library/Application Support/Sublime Text 3/Packages/SublimeLinter/SublimeLinter.sublime-settings",
+		"/Users/colin/Library/Application Support/Sublime Text 3/Packages/User/linters/c.py",
+		"/Users/colin/Library/Application Support/Sublime Text 3/Installed Packages/SublimeLinter.sublime-package",
+		"/Users/colin/Library/Application Support/Sublime Text 3/Installed Packages/sublimelint.sublime-package",
+		"/Users/colin/workspace/Lagrangian-Analysis/athena_turbflame_pathlines/.gitignore",
+		"/Users/colin/workspace/Lagrangian-Analysis/athena_turbflame_pathlines/pathlines_domain_parallel.f90",
+		"/Users/colin/workspace/Lagrangian-Analysis/athena_turbflame_pathlines/pathlines_raw_binary.f90",
+		"/Users/colin/Google Drive/workspace/python/autoignite_pathline_postprocessing.py",
+		"/Users/colin/Google Drive/workspace/python/plotting/autoignite_slice_plots.py",
+		"/Users/colin/Google Drive/workspace/python/plotting/whitmans_slices.py",
+		"/Users/colin/Google Drive/workspace/python/plotting/new_autoignite_pathline_plots.py",
+		"/Users/colin/Google Drive/workspace/python/sim_params_chemical_autoignition.py",
+		"/Users/colin/Google Drive/workspace/python/teslacu/Athena/turbflame_arrhenius_slices.py",
+		"/Users/colin/Google Drive/workspace/python/teslacu/Athena/single_comm_functions.py",
+		"/Users/colin/Google Drive/workspace/python/flame_params.py"
+	],
+	"find":
+	{
+		"height": 23.0
+	},
+	"find_in_files":
+	{
+		"height": 101.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": true,
+		"find_history":
+		[
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": true,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"sheets":
+			[
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 23.0
+	},
+	"input":
+	{
+		"height": 36.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.SublimeLinter":
+	{
+		"height": 287.0
+	},
+	"output.exec":
+	{
+		"height": 196.0
+	},
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"output.unsaved_changes":
+	{
+		"height": 108.0
+	},
+	"pinned_build_system": "Packages/Fortran/build-systems/GFortran.sublime-build",
+	"project": "teslapy.sublime-project",
+	"replace":
+	{
+		"height": 42.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 500.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 380.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": true,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 320.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}

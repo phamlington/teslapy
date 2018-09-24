@@ -1,1 +1,1 @@
-from .spectralLES import spectralLES
+from .spectralLES import spectralLES, staticSmagorinskyLES

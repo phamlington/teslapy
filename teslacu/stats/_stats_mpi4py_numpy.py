@@ -37,10 +37,9 @@ def central_moments(comm, N, data, w=None, wbar=None, m1=None):
     gmax = comm.allreduce(np.nanmax(data), op=MPI.MAX)
 
     if w is None:   # unweighted moments
-        w = 1
-        wbar = 1
-    else:
-        if wbar is None:
+        w = 1.0
+        wbar = 1.0
+    elif wbar is None:
             wbar = comm.allreduce(psum(w), op=MPI.SUM)/N
 
     N = N*wbar
@@ -49,15 +48,15 @@ def central_moments(comm, N, data, w=None, wbar=None, m1=None):
     if m1 is None:
         m1 = comm.allreduce(psum(w*data), op=MPI.SUM)/N
 
-    # 2nd-6th centered moments
-    cdata = data-m1
+    # 2nd-4th centered moments
+    cdata = data - m1
     c2 = comm.allreduce(psum(w*np.power(cdata, 2)), op=MPI.SUM)/N
     c3 = comm.allreduce(psum(w*np.power(cdata, 3)), op=MPI.SUM)/N
     c4 = comm.allreduce(psum(w*np.power(cdata, 4)), op=MPI.SUM)/N
-    c5 = comm.allreduce(psum(w*np.power(cdata, 5)), op=MPI.SUM)/N
-    c6 = comm.allreduce(psum(w*np.power(cdata, 6)), op=MPI.SUM)/N
+    # c5 = comm.allreduce(psum(w*np.power(cdata, 5)), op=MPI.SUM)/N
+    # c6 = comm.allreduce(psum(w*np.power(cdata, 6)), op=MPI.SUM)/N
 
-    return m1, c2, c3, c4, c5, c6, gmin, gmax
+    return m1, c2, c3, c4, gmin, gmax
 
 
 def histogram1(comm, N, data, range=None, bins=50, w=None, wbar=None, m1=None):
@@ -67,7 +66,7 @@ def histogram1(comm, N, data, range=None, bins=50, w=None, wbar=None, m1=None):
     """
 
     if w is None:   # unweighted moments
-        w = 1
+        w = np.ones_like(data)
         wbar = 1
     elif wbar is None:
         wbar = comm.allreduce(psum(w), op=MPI.SUM)/N

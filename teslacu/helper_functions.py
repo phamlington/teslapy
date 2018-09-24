@@ -9,6 +9,9 @@ import sys
 import getopt
 # import hashlib
 
+# print(update(mA.comm.rank, '\tphi post-PSD: %s'
+#       % hashlib.md5(phi).hexdigest()))
+
 __all__ = []
 
 comm = MPI.COMM_WORLD
@@ -39,9 +42,9 @@ def get_inputs():
     -o <output directory>   default: 'analysis/'
     -p <problem ID>         defualt: 'no_problem_id'
     -N <Nx>                 default: 512
-    -g <gamma>              default: 1.4
+    -g <gamma>              default: 1.3
     -L <L>                  default: 1.0
-    -R <R>                  default: 8.3144598e7/21
+    -M <M>                  default: 21
     -r <irs:ire:rint>       default: 1:20:1
     -t <its:ite:tint>       default: 1:20:1
     --Texp <texp>           default: 0.7
@@ -59,8 +62,8 @@ def get_inputs():
     its = 1                         # vtk time index start
     ite = 20                        # vtk time index end
     tint = 1                        # vtk time index interval
-    gamma = 1.4                     # heat capacity ratio
-    R = 8.3144598e7/21              # gas constant
+    gamma = 1.3                     # heat capacity ratio
+    M = 24.62                       # molecular weight
     texp = 0.7                      # transport properties exponent "n"
     tcoef = 3.1e-6                  # transport properties Th1^n coefficient
     tmp0 = 293.0                    # reference temperature
@@ -155,10 +158,10 @@ def get_inputs():
                     sys.exit(e.errno)
                 if comm.rank == 0:
                     print('time steps:\t\t{}'.format((its, ite, tint)))
-            elif opt=='-R':
-                R = float(arg)
+            elif opt=='-M':
+                M = float(arg)
                 if comm.rank == 0:
-                    print('R:\t\t\t{}'.format(R))
+                    print('M:\t\t\t{}'.format(M))
             elif opt=='--Texp':
                 texp = float(arg)
                 if comm.rank == 0:
@@ -184,13 +187,13 @@ def get_inputs():
             MPI.Finalize()
             sys.exit(e.errno)
 
-    args = (idir, odir, pid, N, L, irs, ire, rint, its, ite, tint, gamma, R,
+    args = (idir, odir, pid, N, L, irs, ire, rint, its, ite, tint, gamma, M,
             texp, tcoef, tmp0)
 
     return args
 
 
-def scalar_analysis(mA, phi, minmax, m1, w, wbar, fname, title, symb):
+def scalar_analysis(mA, phi, range, m1, w, wbar, fname, title, symb, norm=1.):
     """
     Compute all the 'stand-alone' statistics and scalings related to
     a scalar field such as density, pressure, or tracer mass
@@ -218,28 +221,13 @@ def scalar_analysis(mA, phi, minmax, m1, w, wbar, fname, title, symb):
 
     Ek_fmt = "\widehat{{{0}}}^*\widehat{{{0}}}".format
 
-    # if mA.comm.rank % 8 == 0:
-    #     print(update(mA.comm.rank, '\tphi: %s'
-    #            % hashlib.md5(phi).hexdigest()))
+    mA.mpi_histogram1(phi, fname, '%s\t%s' % (xlabel, ylabel),
+                      range, 100, w, wbar, m1, norm)
 
-    mA.mpi_histogram1(phi, fname, xlabel, ylabel, minmax, 100, w, wbar)
-
-    # if mA.comm.rank % 8 == 0:
-    #     print(update(mA.comm.rank, '\tphi post-histogram: %s'
-    #            % hashlib.md5(phi).hexdigest()))
-
-    mA.write_mpi_moments(phi, title, symb, w, wbar, m1=m1)
-
-    # if mA.comm.rank % 8 == 0:
-    #     print(update(mA.comm.rank, '\tphi post-moments: %s'
-    #            % hashlib.md5(phi).hexdigest()))
+    mA.write_mpi_moments(phi, title, w, wbar, m1, norm)
 
     if fname in ['rho', 'P', 'T', 'Smm', 'Y']:
-        mA.spectral_density(phi, fname, title+' PSD', Ek_fmt(symb))
-
-    # if mA.comm.rank % 8 == 0:
-    #     print(update(mA.comm.rank, '\tphi post-PSD: %s'
-    #            % hashlib.md5(phi).hexdigest()))
+        mA.spectral_density(phi, fname, '%s PSD\t%s' % (title, Ek_fmt(symb)))
 
     # insert structure functions, scalar increments, two-point
     # correlations here.

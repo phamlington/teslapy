@@ -36,6 +36,54 @@ def deriv(phi, h, axis=0):
     ---------
     phi   - input array
     h     - uniform grid spacing
+    axis  -
+
+    Output
+    ------
+    f - d^k/dx^k(phi)
+    """
+    if phi.ndim != 3:
+        print("ERROR: phi.ndim not equal to 3!")
+
+    axis = axis % phi.ndim
+    if axis != 2:
+        phi = _np.swapaxes(phi, axis, 2)
+
+    s = list(phi.shape)
+    x = _np.arange(-3, s[2]+3, dtype=phi.dtype)
+    xh = _np.arange(-0.5, s[2]+0.5, 1.0, dtype=phi.dtype)
+    deriv = _np.empty_like(phi)
+
+    nx = s[2] + 6
+    tmp = _np.empty(nx, dtype=phi.dtype)
+
+    for k in range(s[0]):
+        for j in range(s[1]):
+            tmp[3:-3] = phi[k, j, :]
+            tmp[:3] = phi[k, j, -3:]
+            tmp[-3:] = phi[k, j, :3]
+
+            spline = _interp(x, tmp)
+            phih = spline(xh)
+            deriv[k, j, :] = (1.0/h)*(phih[1:] - phih[:-1])
+
+    if axis != 2:
+        deriv = _np.swapaxes(deriv, axis, 2)
+
+    return deriv
+
+
+def deriv_bak(phi, h, axis=0):
+    """
+    deriv(phi, h, axis=0):
+
+    deriv computes the k'th derivative of a uniform gridded array along the
+    prescribed axis using Akima spline approximation.
+
+    Arguments
+    ---------
+    phi   - input array
+    h     - uniform grid spacing
     bc    -
     k     - order of the derivative
     axis  -

@@ -62,10 +62,10 @@ def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', ndims=3,
     """
 
     if ftype == 'binary':
-        newReader = _binaryReader(comm, idir, ndims, decomp, N, nh,
+        newReader = _binaryReader(comm, idir, N, nh, ndims, decomp,
                                   periodic, byteswap)
     else:
-        newReader = _binaryReader(comm, idir, ndims, decomp, N, nh,
+        newReader = _binaryReader(comm, idir, N, nh, ndims, decomp,
                                   periodic, byteswap)
 
     return newReader
@@ -92,7 +92,7 @@ class _binaryReader(object):
         self._byteswap = byteswap
 
         if decomp is None:
-            decomp = list([True, ])
+            decomp = list([True])
             decomp.extend([False]*(ndims-1))
             self._decomp = decomp
         elif len(decomp) == ndims:
@@ -109,7 +109,7 @@ class _binaryReader(object):
             else:
                 raise IndexError("The length of N must be either 1 or ndims")
         else:
-            self._nx = np.array([int(N)]*ndims, dtype=int)
+            self._nx = np.array([N]*ndims, dtype=int)
 
         if nh is None:
             self._nh = np.zeros(ndims, dtype=int)
