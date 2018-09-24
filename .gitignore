@@ -4,7 +4,7 @@
 __pycache__
 */__pycache__
 */*/__pycache__
-./teslapy.sublime-project
+teslapy.sublime-project
 */*.sublime-project
-./teslapy.sublime-workspace
+teslapy.sublime-workspace
 */*.sublime-workspace
