@@ -366,13 +366,14 @@ class _baseAnalyzer(object):
         nz = nnz*self.comm.size
         nny = ny//self.comm.size
 
-        temp = np.empty([self.comm.size, nnz, nny, nx], dtype=var.dtype)
+        temp1 = np.empty([self.comm.size, nnz, nny, nx], dtype=var.dtype)
+        temp2 = np.empty([self.comm.size, nnz, nny, nx], dtype=var.dtype)
 
-        temp[:] = np.rollaxis(var.reshape([nnz, self.comm.size, nny, nx]), 1)
-        self.comm.Alltoall(MPI.IN_PLACE, temp)  # send, receive
-        temp.resize([nz, nny, nx])
+        temp1[:] = np.rollaxis(var.reshape([nnz, self.comm.size, nny, nx]), 1)
+        self.comm.Alltoall(temp1, temp2)  # send, receive
+        temp2.resize([nz, nny, nx])
 
-        return temp
+        return temp2
 
     def y2z_slab_exchange(self, varT):
         """
@@ -384,13 +385,15 @@ class _baseAnalyzer(object):
         nnz = nz//self.comm.size
         ny = nny*self.comm.size
 
-        temp = np.empty([self.comm.size, nnz, nny, nx], dtype=varT.dtype)
+        temp1 = np.empty([self.comm.size, nnz, nny, nx], dtype=varT.dtype)
+        temp2 = np.empty([self.comm.size, nnz, nny, nx], dtype=varT.dtype)
 
-        self.comm.Alltoall(varT.reshape(temp.shape), temp)  # send, receive
-        temp.resize([nnz, ny, nx])
-        temp[:] = np.rollaxis(temp, 1).reshape(temp.shape)
+        temp1[:] = varT.reshape(temp1.shape)
+        self.comm.Alltoall(temp1, temp2)  # send, receive
+        temp1.resize([nnz, ny, nx])
+        temp1[:] = np.rollaxis(temp2, 1).reshape(temp1.shape)
 
-        return temp
+        return temp1
 
     # Scalar and Vector Derivatives -------------------------------------------
     def div(self, var):

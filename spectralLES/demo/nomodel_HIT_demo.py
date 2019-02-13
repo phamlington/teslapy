@@ -9,11 +9,11 @@ package for educational instruction and LES model development.
 Notes:
 ------
 To execute the program in serial with an input file on the command line, run
-`mpiexec -n 1 python staticSmag_HIT_demo.py \
+`mpiexec -n 1 python nomodel_HIT_demo.py \
               -f HIT_demo_inputs.txt`.
 
 For help with program options, run
-`mpiexec -n 1 python staticSmag_HIT_demo.py -h`.
+`mpiexec -n 1 python nomodel_HIT_demo.py -h`.
 
 Authors:
 --------
@@ -33,7 +33,7 @@ import sys
 import time
 from math import sqrt, pi
 import argparse
-from spectralLES import staticSmagorinskyLES
+from spectralLES import spectralLES
 from teslacu import mpiWriter
 from teslacu.fft import shell_average
 from teslacu.stats import psum
@@ -44,8 +44,8 @@ comm = MPI.COMM_WORLD
 ###############################################################################
 # Define the problem ("main" function)
 ###############################################################################
-def staticSmag_HIT_demo(pp=None, sp=None):
-    """
+def nomodel_HIT_demo(pp=None, sp=None):
+   """
     Arguments:
     ----------
     pp: (optional) program parameters, parsed by argument parser
@@ -94,19 +94,12 @@ def staticSmag_HIT_demo(pp=None, sp=None):
 
     # ------------------------------------------------------------------
     # Configure the LES solver
-    solver = staticSmagorinskyLES(comm=comm, **vars(sp))
+    solver = spectralLES(comm=comm, **vars(sp))
 
     solver.computeAD = solver.computeAD_vorticity_form
-    Sources = [solver.computeSource_linear_forcing,
-               solver.computeSource_Smagorinsky_SGS,
-               ]
+    Sources = [solver.computeSource_linear_forcing,]
 
-    Ck = 1.6
-    Cs = sqrt((pi**-2)*((3*Ck)**-1.5))  # == 0.098...
-    # Cs = 0.22
-    kwargs = {'dvScale': None,
-              'Cs': Cs,
-              }
+    kwargs = {'dvScale': None,}
 
     U_hat = solver.U_hat
     U = solver.U
@@ -334,4 +327,4 @@ def timeofday():
 ###############################################################################
 if __name__ == "__main__":
     # np.set_printoptions(formatter={'float': '{: .8e}'.format})
-    staticSmag_HIT_demo()
+    nomodel_HIT_demo()

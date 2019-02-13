@@ -57,8 +57,8 @@ import numpy as np
 from math import sqrt, pi
 import argparse
 
-from teslacu.fft import rfft3, irfft3   # FFT transforms
-from teslacu.stats import psum          # statistical functions
+from teslacu.fft import rfft3, irfft3, shell_average   # FFT transforms
+from teslacu.stats import psum                         # statistical functions
 
 
 ###############################################################################
@@ -240,6 +240,8 @@ class spectralLES(object):
         self.Ksq = np.sum(np.square(self.K), axis=0)
         with np.errstate(divide='ignore'):
             self.K_Ksq = np.where(self.Ksq > 0, self.K/self.Ksq, 0.0)
+
+        self.Kmod = np.floor(np.sqrt(self.Ksq)).astype(int)
 
         # --------------------------------------------------------------
         # Compute local subdomain filter kernels
@@ -438,39 +440,38 @@ class spectralLES(object):
 
         return dvScale
 
-    def computeSource_linear_forcing(self, dvScale=None, computeRHS=True,
-                                     **ignored):
+    def computeSource_linear_forcing(self, dvScale=1.0, **ignored):
         """
         Source function to be added to spectralLES solver instance
-        inclusion of keyword dvScale necessary to actually compute the
+        inclusion of keyword dvScale necessary to properly scale the
         source term
 
         Takes one keyword argument:
-        dvScale: (optional) user-provided linear scaling
-        computeRHS: (default=True) add source term to RHS accumulator
+        dvScale: user-provided linear scaling
         """
-        mpi_reduce = self.comm.allreduce
+        # Band-pass filter the solution velocity field,
+        # scale to constant energy injection rate,
+        # and add to the RHS accumulator
+        self.W_hat[:] = dvScale*self.U_hat*self.forcing_filter
+        self.dU += self.W_hat
 
-        # --------------------------------------------------------------
-        # Band-pass filter the solution velocity field
-        self.W_hat[:] = self.U_hat*self.forcing_filter
+        return self.W_hat
 
-        # --------------------------------------------------------------
-        # scale to constant energy injection rate
-        if dvScale is None:
-            irfft3(self.comm, self.W_hat[0], self.W[0])
-            irfft3(self.comm, self.W_hat[1], self.W[1])
-            irfft3(self.comm, self.W_hat[2], self.W[2])
-            dvScale = self.epsilon*self.Nx/mpi_reduce(psum(self.U*self.W))
+    # def computeSource_const_spectrum_forcing(self, Ek, **ignored):
+    #     """
+    #     Empty docstring!
+    #     """
+    #     self.W_hat[:] = self.U_hat*self.forcing_filter
+    #     self.W_hat *= np.conj(self.W_hat)
 
-        self.W_hat *= dvScale
+    #     spect3d = np.sum(np.real(self.W_hat), axis=0)
+    #     spect3d[..., 0] *= 0.5
+    #     spect1d = shell_average(self.comm, spect3d, self.Kmod)
 
-        # --------------------------------------------------------------
-        # add forcing term to the RHS accumulator
-        if computeRHS:
-            self.dU += self.W_hat
+    #     self.W_hat[:] = (Ek/spect1d)*self.U_hat*self.forcing_filter
+    #     self.dU += self.W_hat
 
-        return dvScale
+    #     return e_inj
 
     def computeAD_vorticity_form(self, **ignored):
         """
@@ -552,6 +553,23 @@ class spectralLES(object):
 
         return
 
+    def compute_dvScale_constant_injection(self):
+        """
+        empty docstring!
+        """
+        mpi_reduce = self.comm.allreduce
+
+        # Band-pass filter the solution velocity field
+        self.W_hat[:] = self.U_hat*self.forcing_filter
+
+        # scale to constant energy injection rate
+        irfft3(self.comm, self.W_hat[0], self.W[0])
+        irfft3(self.comm, self.W_hat[1], self.W[1])
+        irfft3(self.comm, self.W_hat[2], self.W[2])
+        dvScale = self.epsilon*self.Nx/mpi_reduce(psum(self.U*self.W))
+
+        return dvScale
+
     def filter_kernel(self, kf, Gtype='spectral', k_kf=None,
                       dtype=np.complex128):
         """
@@ -609,6 +627,15 @@ class spectralLES(object):
             raise ValueError('did not understand filter type')
 
         return Ghat
+
+    def jit_linear_forcing(dU, U_hat, W_hat, bandpass, dvScale):
+        """
+        non-object-oriented function for JIT compiling to optimized bit-code
+        """
+        W_hat[:] = dvScale*U_hat*bandpass
+        dU += W_hat
+
+        return W_hat
 
 
 ###############################################################################

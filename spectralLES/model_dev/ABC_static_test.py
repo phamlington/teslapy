@@ -30,6 +30,8 @@ from teslacu import mpiWriter
 from teslacu.fft import rfft3, irfft3, shell_average
 from teslacu.stats import psum
 
+# import cProfile
+
 comm = MPI.COMM_WORLD
 
 
@@ -70,7 +72,7 @@ class staticGeneralizedEddyViscosityLES(spectralLES):
     # -------------------------------------------------------------------------
     # Instance Methods
     # -------------------------------------------------------------------------
-    def computeSource_Smagorinsky_SGS(self, C1=-6.39e-2, **ignored):
+    def computeSource_Smagorinsky_SGS(self, C1=-2e-2, **ignored):
         """
         SPARSE SYMMETRIC TENSOR INDEXING:
         m == 0 -> ij == 00
@@ -244,22 +246,22 @@ def ABC_static_test(pp=None, sp=None):
     # ------------------------------------------------------------------
     # Configure the LES solver
     solver = staticGeneralizedEddyViscosityLES(
-                Smagorinsky=False, comm=comm, **vars(sp))
+                Smagorinsky=True, comm=comm, **vars(sp))
 
     solver.computeAD = solver.computeAD_vorticity_form
     Sources = [solver.computeSource_linear_forcing,
-               # solver.computeSource_Smagorinsky_SGS,
-               solver.computeSource_4termGEV_SGS,
+               solver.computeSource_Smagorinsky_SGS,
+               # solver.computeSource_4termGEV_SGS,
                ]
 
-    C1 = np.array([-6.39e-02])
+    # C1 = np.array([-6.39e-02])
     C3 = np.array([-3.75e-02, 6.2487e-02, 6.9867e-03, 0.0])
-    C4 = np.array([-3.15e-02, -5.25e-02, 2.7e-02, 2.7e-02])
-    kwargs = dict(C1=-6.39e-02, C=C3*solver.D_les**2, dvScale=None)
+    # C4 = np.array([-3.15e-02, -5.25e-02, 2.7e-02, 2.7e-02])
+    kwargs = dict(C1=-2e-2, C=C3*solver.D_les**2, dvScale=None)
 
     U_hat = solver.U_hat
     U = solver.U
-    Kmod = np.floor(np.sqrt(solver.Ksq)).astype(int)
+    Kmod = solver.Kmod
 
     # ------------------------------------------------------------------
     # form HIT initial conditions from either user-defined values or
@@ -275,7 +277,7 @@ def ABC_static_test(pp=None, sp=None):
     # ------------------------------------------------------------------
     # Configure a spatial field writer
     writer = mpiWriter(comm, odir=pp.odir, N=N)
-    Ek_fmt = "\widehat{{{0}}}^*\widehat{{{0}}}".format
+    Ek_fmt = "\\widehat{{{0}}}^*\\widehat{{{0}}}".format
 
     # -------------------------------------------------------------------------
     # Setup the various time and IO counters
@@ -287,12 +289,11 @@ def ABC_static_test(pp=None, sp=None):
 
     dt_rst = getattr(pp, 'dt_rst', None) or taul
     dt_spec= getattr(pp, 'dt_spec', None) or 0.2*taul
-    dt_drv = getattr(pp, 'dt_drv', None) or 0.25*tauK
+    dt_drv = getattr(pp, 'dt_drv', None) or tauK
 
     t_sim = t_rst = t_spec = t_drv = 0.0
     tstep = irst = ispec = 0
     tseries = []
-
 
     if comm.rank == 0:
         print('\ntau_ell = %.6e\ntau_K = %.6e\n' % (taul, tauK))
@@ -309,13 +310,13 @@ def ABC_static_test(pp=None, sp=None):
         KE = 0.5*comm.allreduce(psum(np.square(U)))/solver.Nx
         tseries.append([tstep, t_sim, KE])
 
+        # -- output message log to screen on spectrum output only
+        if comm.rank == 0:
+            print("cycle = %7d  time = %15.8e  dt = %15.8e  KE = %15.8e"
+                  % (tstep, t_sim, dt, KE))
+
         # -- output KE and enstrophy spectra
         if t_test >= t_spec:
-
-            # -- output message log to screen on spectrum output only
-            if comm.rank == 0:
-                print("cycle = %7d  time = %15.8e  dt = %15.8e  KE = %15.8e"
-                      % (tstep, t_sim, dt, KE))
 
             # -- output kinetic energy spectrum to file
             spect3d = np.sum(np.real(U_hat*np.conj(U_hat)), axis=0)
@@ -323,7 +324,7 @@ def ABC_static_test(pp=None, sp=None):
             spect1d = shell_average(comm, spect3d, Kmod)
 
             if comm.rank == 0:
-                fname = '%s/%s-%3.3d_KE.spectra' % (pp.adir, pp.pid, ispec)
+                fname = '%s/%s-%3.3d_KE.spectra' % (pp.odir, pp.pid, ispec)
                 fh = open(fname, 'w')
                 metadata = Ek_fmt('u_i')
                 fh.write('%s\n' % metadata)
@@ -335,6 +336,7 @@ def ABC_static_test(pp=None, sp=None):
 
         # -- output physical-space solution fields for restarting and analysis
         if t_test >= t_rst:
+
             writer.write_scalar('%s-Velocity1_%3.3d.rst' %
                                 (pp.pid, irst), U[0], np.float64)
             writer.write_scalar('%s-Velocity2_%3.3d.rst' %
@@ -346,9 +348,10 @@ def ABC_static_test(pp=None, sp=None):
 
         # -- Update the forcing mean scaling
         if t_test >= t_drv:
+
             # call solver.computeSource_linear_forcing to compute dvScale only
             kwargs['dvScale'] = Sources[0](computeRHS=False)
-            t_drv += dt_drv
+            t_drv += max(4*dt, dt_drv)
 
         # -- integrate the solution forward in time
         solver.RK4_integrate(dt, *Sources, **kwargs)
@@ -365,7 +368,7 @@ def ABC_static_test(pp=None, sp=None):
     tseries.append([tstep, t_sim, KE])
 
     if comm.rank == 0:
-        fname = '%s/%s-%3.3d_KE_tseries.txt' % (pp.adir, pp.pid, ispec)
+        fname = '%s/%s-%3.3d_KE_tseries.txt' % (pp.odir, pp.pid, ispec)
         header = 'Kinetic Energy Timeseries,\n# columns: tstep, time, KE'
         np.savetxt(fname, tseries, fmt='%10.5e', header=header)
 
@@ -383,7 +386,7 @@ def ABC_static_test(pp=None, sp=None):
 
     if comm.rank == 0:
         fh = open('%s/%s-%3.3d_KE.spectra' %
-                  (pp.adir, pp.pid, ispec), 'w')
+                  (pp.odir, pp.pid, ispec), 'w')
         metadata = Ek_fmt('u_i')
         fh.write('%s\n' % metadata)
         spect1d.tofile(fh, sep='\n', format='% .8e')
@@ -421,7 +424,7 @@ config_group.add_argument('--dt_drv', type=float,
 time_group = hit_parser.add_argument_group('time integration arguments')
 
 time_group.add_argument('--cfl', type=float, default=0.45, help='CFL number')
-time_group.add_argument('-t', '--tlimit', type=float, default=np.inf,
+time_group.add_argument('-t', '--tlimit', type=float, default=0.25,
                         help='solution time limit')
 time_group.add_argument('-w', '--twall', type=float,
                         help='run wall-time limit (ignored for now!!!)')
@@ -476,4 +479,5 @@ anlzr_group.add_argument('--dt_spec', type=float,
 ###############################################################################
 if __name__ == "__main__":
     # np.set_printoptions(formatter={'float': '{: .8e}'.format})
+    # cProfile.run('ABC_static_test()', 'cProfile.%d.log' % comm.rank)
     ABC_static_test()

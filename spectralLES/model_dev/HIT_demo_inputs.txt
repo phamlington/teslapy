@@ -39,14 +39,14 @@
 
 <problem>
 
-# pid         = jhu_N64_nomodel_test      # problem ID, (analysis file prefix only for now)
-#                                         # program default = test
+pid         = jhu_N128_staticSmag       # problem ID, (analysis file prefix only for now)
+                                        # program default = test
 
 # L           = [2*pi, 2*pi, 2*pi]        # domain dimensions, don't change from default for now!
 #                                         # spectralLES default = [2*pi, 2*pi, 2*pi]
 
-# N           = [64, 64, 64]              # mesh dimensions
-#                                         # spectralLES default = [64, 64, 64]
+N           = 128                       # mesh dimensions
+                                        # spectralLES default = [64, 64, 64]
 
 # nu          = 0.000185                  # kinematic viscosity
 #                                         # spectralLES default = 0.000185
@@ -67,7 +67,7 @@
 # cfl         = 0.45                      # CFL condition
 #                                         # program default = 0.45
 
-tlimit      = 40.9                      # simulation time limit
+tlimit      = 40.                       # simulation time limit
                                         # program default = 262*tau,
                                         #   which gives 6*tau for spin-up and 256*tau for data
 
@@ -92,7 +92,7 @@ filter_type = spectral                  # LES filter shape
 #                                         # program default = GamieOstriker
 #                                         # program choices = GamieOstriker, TaylorGreen
 
-kexp        = -0.8333                   # power-law scaling of Gamie-Ostriker spectrum
+kexp        = -0.333                    # power-law scaling of Gamie-Ostriker spectrum
                                         # program default = -1/3 -> E(k) * k^(-2./3.)
 
 # kpeak       =                           # exponential-decay scaling of Gamie-Ostriker spectrum

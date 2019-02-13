@@ -43,14 +43,15 @@ http://tesla.colorado.edu
 
 from mpi4py import MPI
 import numpy as np
+import os
 # from vtk import vtkStructuredPointsReader
 # from vtk.util import numpy_support as vn
 
 __all__ = []
 
 
-def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', ndims=3,
-              decomp=None, N=512, nh=None, periodic=None, byteswap=True):
+def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', N=512, ndims=3,
+              decomp=None, periodic=None, byteswap=False):
     """
     The mpiReader() function is a "class factory" which returns the
     appropriate mpi-parallel reader class instance based upon the
@@ -62,10 +63,10 @@ def mpiReader(comm=MPI.COMM_WORLD, idir='./', ftype='binary', ndims=3,
     """
 
     if ftype == 'binary':
-        newReader = _binaryReader(comm, idir, N, nh, ndims, decomp,
+        newReader = _binaryReader(comm, idir, N, ndims, decomp,
                                   periodic, byteswap)
     else:
-        newReader = _binaryReader(comm, idir, N, nh, ndims, decomp,
+        newReader = _binaryReader(comm, idir, N, ndims, decomp,
                                   periodic, byteswap)
 
     return newReader
@@ -80,26 +81,22 @@ class _binaryReader(object):
         - this thing is pretty much not developed at all.
     """
 
-    def __init__(self, comm, idir, N, nh, ndims, decomp, periodic, byteswap):
+    def __init__(self, comm, idir, N, ndims, decomp, periodic, byteswap):
 
         # DEFINE THE INSTANCE VARIABLES
 
         # "Protected" variables masked by property method
         #  Global variables
         self._idir = idir
-        self._comm = comm
         self._ndims = ndims
-        self._byteswap = byteswap
+        self.byteswap = byteswap
 
         if decomp is None:
-            decomp = list([True])
-            decomp.extend([False]*(ndims-1))
-            self._decomp = decomp
-        elif len(decomp) == ndims:
+            self._decomp = 1
+        elif decomp in [1, 2, 3] and decomp <= ndims:
             self._decomp = decomp
         else:
-            raise IndexError("Either len(decomp) must be ndims or "
-                             "decomp must be None")
+            raise IndexError("decomp must be 1, 2, 3 or None")
 
         if np.iterable(N):
             if len(N) == 1:
@@ -110,14 +107,6 @@ class _binaryReader(object):
                 raise IndexError("The length of N must be either 1 or ndims")
         else:
             self._nx = np.array([N]*ndims, dtype=int)
-
-        if nh is None:
-            self._nh = np.zeros(ndims, dtype=int)
-        elif len(nh) == ndims:
-            self._nh = np.array(nh, dtype=int)
-        else:
-            raise IndexError("Either len(nh) must be ndims or nh "
-                             "must be None")
 
         if periodic is None:
             self._periodic = tuple([False]*ndims)
@@ -132,26 +121,34 @@ class _binaryReader(object):
         self._ixs = np.zeros(ndims, dtype=int)
         self._ixe = self._nx.copy()
 
-        if sum(self._decomp) == 1:
+        if self._decomp == 1:
             # 1D domain decomposition (plates in 3D, pencils in 2D)
+            self.comm = comm
             self._nnx[0] = self._nx[0]/comm.size
             self._ixs[0] = self._nnx[0]*comm.rank
             self._ixe[0] = self._ixs[0]+self._nnx[0]
+            self.Read_all = self._read_all_1d
+
+        elif self._decomp == 2:
+            raise ValueError("mpiReader can't yet handle 2D domain "
+                             "decomposition.")
+
+        elif self._decomp == 3:
+            comm_orig = comm
+            dims = MPI.Compute_dims(comm_orig.size, ndims)
+            comm = comm_orig.Create_cart(dims, self._periodic)
+            self._coords = comm.Get_coords(comm.rank)
+            self.comm = comm
+
+            assert np.all(np.mod(self._nx, dims) == 0)
+            self._nnx = self._nx//dims
+            self._ixs = self._nnx*self._coords
+            self._ixe = self._ixs + self._nnx
+            self.Read_all = self._read_all_3d
+
         else:
-            raise AssertionError("mpiReader can't yet handle anything "
-                                 "but 1D Decomposition.")
-
-    @property
-    def comm(self):
-        return self._comm
-
-    @property
-    def taskid(self):
-        return self._taskid
-
-    @property
-    def ntasks(self):
-        return self._ntasks
+            raise ValueError("mpiReader can't yet handle anything but 1D and"
+                             " 3D domain decomposition.")
 
     @property
     def ndims(self):
@@ -166,8 +163,8 @@ class _binaryReader(object):
         return self._nx
 
     @property
-    def nh(self):
-        return self._nh
+    def coords(self):
+        return self._coords
 
     @property
     def nnx(self):
@@ -181,10 +178,6 @@ class _binaryReader(object):
     def ixe(self):
         return self._ixe
 
-    @property
-    def byteswap(self):
-        return self._byteswap
-
     def simulation_time(self, filename):
         if self.taskid==0:
             with open(self._idir+filename) as fh:
@@ -196,93 +189,55 @@ class _binaryReader(object):
 
         return t
 
-    def read_variable(self, filename, ftype=np.float32, mtype=np.float64):
-        """Currently hard coded to 1D domain decomposition."""
+    def _read_all_1d(self, filename, ftype=np.float32, mtype=np.float64):
+        """
+        1D domain decomposition
+        """
         status = MPI.Status()
         temp = np.zeros(self.nnx, dtype=ftype)
-        fpath = self._idir+filename
+        offset = self.comm.rank*temp.nbytes
+
+        fpath = os.path.join(self._idir, filename)
         fhandle = MPI.File.Open(self.comm, fpath)
-        offset = self._comm.rank*temp.nbytes
+
         fhandle.Read_at_all(offset, temp, status)
+
         fhandle.Close()
 
         if self.byteswap:
-            var = temp.byteswap(True).astype(mtype)
-        else:
-            var = temp.astype(mtype)
-        return var
+            temp.byteswap(inplace=True)
 
-    def read_variable_ghost_cells(self, filename, dtype=np.float64):
-        """Currently hard coded to 1D domain decomposition."""
+        return temp.astype(mtype, casting='safe', copy=False)
+
+    def _read_all_3d(self, filename, ftype=np.float32, mtype=np.float64):
+        """
+        3D domain decomposition
+        """
+        disp = 0
+        nbits = np.finfo(ftype).bits
+        if nbits == 32:
+            MPI_ETYPE = MPI.FLOAT
+        elif nbits == 64:
+            MPI_ETYPE = MPI.DOUBLE
+        else:
+            raise ValueError("ftype must be a 32-bit or 64-bit floating point"
+                             " datatype.")
+
         status = MPI.Status()
-        shape = np.array([self.nh[0]*2, self.nnx[1], self.nnx[2]])
-        temp = np.zeros(shape, dtype=np.float32)
-        hsize = shape.prod()*2     # 1/2 of temp size * 4 bytes
-        dsize = self.nnx.prod()*4  # subdomain size * 4 bytes
+        temp = np.zeros(self._nnx, dtype=ftype)
 
-        fpath = self._idir+filename
-        fhandle = MPI.File.Open(self.comm, fpath)
+        filepath = os.path.join(self._idir, filename)
+        fh = MPI.File.Open(self.comm, filepath)
 
-        # read in the -z ghost zones
-        if self.taskid==0:
-            idx = self.ntasks
-        else:
-            idx = self.taskid
-        offset = dsize*idx - hsize
-        fhandle.Read_at_all(offset, temp[:self.nh[0], ...], status)
+        filetype = MPI_ETYPE.Create_subarray(self._nx, self._nnx, self._ixs)
+        filetype.Commit()
+        fh.Set_view(disp, MPI_ETYPE, filetype, 'native')
+        fh.Read_all(temp, status)
 
-        # read in the +z ghost zones
-        if self.taskid==self.ntasks-1:
-            idx = 0
-        else:
-            idx = self.taskid+1
-        offset = dsize*idx
-        fhandle.Read_at_all(offset, temp[self.nh[0]:, ...], status)
-
-        fhandle.Close()
+        fh.Close()
+        filetype.Free()
 
         if self.byteswap:
-            var = temp.byteswap(True).astype(dtype)
-        else:
-            var = temp.astype(dtype)
-        return var
+            temp.byteswap(inplace=True)
 
-
-###############################################################################
-# class mpiVtkReader(object):
-    """
-    reader = vtkStructuredPointsReader()
-    reader.SetFileName(filename)
-    reader.ReadAllVectorsOn()
-    reader.ReadAllScalarsOn()
-    reader.Update()
-
-    data = reader.GetOutput()
-
-    dim = data.GetDimensions()
-    vec = list(dim)
-    vec = [i-1 for i in dim]
-    vec.append(3)
-
-    u    = vn.vtk_to_numpy(data.GetCellData().GetArray('velocity'))
-    rho  = vn.vtk_to_numpy(data.GetCellData().GetArray('density'))
-    Etot = vn.vtk_to_numpy(data.GetCellData().GetArray('total_energy'))
-    Y    = vn.vtk_to_numpy(data.GetCellData().GetArray('scalar'))
-    byte_mask = vn.vtk_to_numpy(data.GetCellData().GetArray('avtGhostZones'))
-
-    x = zeros(data.GetNumberOfPoints())
-    y = zeros(data.GetNumberOfPoints())
-    z = zeros(data.GetNumberOfPoints())
-
-    for i in range(data.GetNumberOfPoints()):
-        x[i],y[i],z[i] = data.GetPoint(i)
-
-    u    = u.reshape(vec,order='F')
-    rho  = rho.reshape(dim,order='F')
-    Etot = Etot.reshape(dim,order='F')
-    Y    = Y.reshape(dim,order='F')
-    x    = x.reshape(dim,order='F')
-    y    = y.reshape(dim,order='F')
-    z    = z.reshape(dim,order='F')
-    byte_mask = byte_mask.reshape(dim,order='F')
-    """
+        return temp.astype(mtype, casting='safe', copy=False)
