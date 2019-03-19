@@ -244,15 +244,15 @@ def ABC_static_test(pp=None, sp=None):
     # ------------------------------------------------------------------
     # Configure the LES solver
     solver = staticGeneralizedEddyViscosityLES(
-                Smagorinsky=False, comm=comm, **vars(sp))
+                Smagorinsky=True, comm=comm, **vars(sp))
 
     solver.computeAD = solver.computeAD_vorticity_form
     Sources = [solver.computeSource_linear_forcing,
-               # solver.computeSource_Smagorinsky_SGS,
-               solver.computeSource_4termGEV_SGS,
+               solver.computeSource_Smagorinsky_SGS,
+               # solver.computeSource_4termGEV_SGS,
                ]
 
-    C1 = np.array([-6.39e-02])
+    # C1 = np.array([-6.39e-02])
     C3 = np.array([-3.75e-02, 6.2487e-02, 6.9867e-03, 0.0])
     C4 = np.array([-3.15e-02, -5.25e-02, 2.7e-02, 2.7e-02])
     kwargs = dict(C1=-6.39e-02, C=C3*solver.D_les**2, dvScale=None)
@@ -293,12 +293,14 @@ def ABC_static_test(pp=None, sp=None):
     tstep = irst = ispec = 0
     tseries = []
 
-
     if comm.rank == 0:
         print('\ntau_ell = %.6e\ntau_K = %.6e\n' % (taul, tauK))
 
     # -------------------------------------------------------------------------
     # Run the simulation
+    if comm.rank == 0:
+        t1 = time.time()
+
     while t_sim < pp.tlimit+1.e-8:
 
         # -- Update the dynamic dt based on CFL constraint
@@ -360,6 +362,9 @@ def ABC_static_test(pp=None, sp=None):
 
     # -------------------------------------------------------------------------
     # Finalize the simulation
+    if comm.rank == 0:
+        t2 = time.time()
+        print('Program took %12.7f s' % ((t2-t1)))
 
     KE = 0.5*comm.allreduce(psum(np.square(U)))/solver.Nx
     tseries.append([tstep, t_sim, KE])
@@ -421,7 +426,7 @@ config_group.add_argument('--dt_drv', type=float,
 time_group = hit_parser.add_argument_group('time integration arguments')
 
 time_group.add_argument('--cfl', type=float, default=0.45, help='CFL number')
-time_group.add_argument('-t', '--tlimit', type=float, default=np.inf,
+time_group.add_argument('-t', '--tlimit', type=float, default=1.0,
                         help='solution time limit')
 time_group.add_argument('-w', '--twall', type=float,
                         help='run wall-time limit (ignored for now!!!)')
