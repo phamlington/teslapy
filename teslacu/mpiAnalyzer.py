@@ -68,9 +68,12 @@ from .diff import akima as tcas     # Akima spline approximation functions
 __all__ = []
 
 
-def mpiAnalyzer(comm=MPI.COMM_WORLD, odir='./analysis/', pid='test', ndims=3,
-                L=[2*np.pi]*3, N=[512]*3, config='hit',
-                method='spline_flux_diff', **kwargs):
+# -----------------------------------------------------------------------------
+def mpiAnalyzer(comm=MPI.COMM_WORLD, odir='./analysis/', pid='test',
+                ndims=3, decomp=None, periodic=None,
+                L=[2*np.pi]*3, N=[512]*3,
+                config='hit', method='spline_flux_diff',
+                **kwargs):
     """
     The mpiAnalyzer() function is a "class factory" which returns the
     appropriate mpi-parallel analyzer class instance based upon the
@@ -114,26 +117,49 @@ def mpiAnalyzer(comm=MPI.COMM_WORLD, odir='./analysis/', pid='test', ndims=3,
     return analyzer
 
 
+# -----------------------------------------------------------------------------
 class _baseAnalyzer(object):
     """
     class _baseAnalyzer(object) ...
+    Empty docstring!
     """
 
-    def __init__(self, comm, odir, pid, ndims, L, N, method):
+    # -------------------------------------------------------------------------
+    # Class Instantiator
+    # -------------------------------------------------------------------------
+    def __init__(self, comm, odir, pid, ndims, decomp, periodic, L, N, method):
 
-        # "Protected" variables masked by property method
-        self._odir = odir
+        # --------------------------------------------------------------
+        # Unprocessed user-input instance properties
         self._pid = pid
-        self._comm = comm
         self._ndims = ndims
         self._config = "Unknown (Base Configuration)"
-        self._periodic = [False]*ndims
+        self._odir = odir
+        init_comm = comm
 
-        # "Public" variables
-        self.tol = 1.0e-6
-        self.prefix = pid+'-'
+        # --------------------------------------------------------------
+        # Make analysis output directory
+        if init_comm.rank == 0:
+            try:
+                os.makedirs(odir)
+            except OSError as e:
+                if not os.path.isdir(odir):
+                    raise e
+                else:
+                    status = e
+            finally:
+                if os.path.isdir(odir):
+                    status = 0
+        else:
+            status = None
 
-        # Global domain variables
+        status = init_comm.bcast(status)
+        if status != 0:
+            MPI.Finalize()
+            sys.exit(999)
+
+        # --------------------------------------------------------------
+        # Processed user-input instance properties
         if np.iterable(N):
             if len(N) == 1:
                 self._nx = np.array(list(N)*ndims, dtype=np.int)
@@ -154,41 +180,20 @@ class _baseAnalyzer(object):
         else:
             self._L = np.array([L]*ndims, dtype=np.float)
 
-        self.dx = self._L/self._nx
-        self.Nx = self._nx.prod()
-
-        # Local subdomain variables (1D Decomposition)
-        self.nnx = self._nx.copy()
-        self.ixs = np.zeros(ndims, dtype=np.int)
-        self.ixe = self._nx.copy()
-
-        self.nnx[0] = self._nx[0]//self.comm.size
-        self.ixs[0] = self.nnx[0]*self.comm.rank
-        self.ixe[0] = self.ixs[0]+self.nnx[0]
-
-        # eventually add other subdomain decompositions
-
-        # MAKE ODIR, CHECKING IF IT IS A VALID PATH.
-        if comm.rank == 0:
-            try:
-                os.makedirs(odir)
-            except OSError as e:
-                if not os.path.isdir(odir):
-                    raise e
-                else:
-                    status = e
-            finally:
-                if os.path.isdir(odir):
-                    status = 0
+        if decomp is None:
+            self._decomp = 1
+        elif decomp in [1, 2, 3] and decomp <= ndims:
+            self._decomp = decomp
         else:
-            status = None
+            raise IndexError("decomp must be 1, 2, 3 or None")
 
-        status = comm.bcast(status)
-        if status != 0:
-            MPI.Finalize()
-            sys.exit(999)
-
-        self.mpi_moments_file = '%s%s.moments' % (self.odir, self.prefix)
+        if periodic is None:
+            self._periodic = tuple([False]*ndims)
+        elif len(periodic) == ndims:
+            self._periodic = tuple(periodic)
+        else:
+            raise IndexError("Either len(periodic) must be ndims or "
+                             "periodic must be None")
 
         if method == 'central_diff':
             self.deriv = self._centdiff_deriv
@@ -197,13 +202,36 @@ class _baseAnalyzer(object):
         elif method == 'ignore':
             self.deriv = None
         else:
-            if comm.rank == 0:
+            if init_comm.rank == 0:
                 print("mpiAnalyzer._baseAnalyzer.__init__(): "
                       "'method' argument not recognized!\n"
                       "Defaulting to Akima spline flux differencing.")
             self.deriv = self._akima_deriv
 
-    # Class Properities -------------------------------------------------------
+        self._dx = self._L/self._nx
+        self._Nx = self._nx.prod()
+
+        # --------------------------------------------------------------
+        # MPI domain decomposition
+        dims = MPI.Compute_dims(init_comm.size, self._decomp)
+        dims.extend([1]*(ndims-self._decomp))
+
+        assert np.all(np.mod(self._nx, dims) == 0)
+
+        self._comm = init_comm.Create_cart(dims, self._periodic)
+        self._nnx = self._nx//dims
+        self._ixs = self._nnx*self.comm.coords
+        self._ixe = self._ixs+self._nnx
+
+        # --------------------------------------------------------------
+        # other stuff (DO NOT count on these being permanent!)
+        self.tol = 1.0e-6
+        self.prefix = pid+'-'
+        self.moments_file = '%s%s.moments' % (self.odir, self.prefix)
+
+    # -------------------------------------------------------------------------
+    # Class Properities
+    # -------------------------------------------------------------------------
     def __enter__(self):
         # with statement initialization
         return self
@@ -244,7 +272,29 @@ class _baseAnalyzer(object):
     def nx(self):
         return self._nx
 
-    # Statistical Moments -----------------------------------------------------
+    @property
+    def dx(self):
+        return self._dx
+
+    @property
+    def Nx(self):
+        return self._Nx
+
+    @property
+    def nnx(self):
+        return self._nnx
+
+    @property
+    def ixs(self):
+        return self._ixs
+
+    @property
+    def ixe(self):
+        return self._ixe
+
+    # -------------------------------------------------------------------------
+    # Statistical Moments
+    # -------------------------------------------------------------------------
     def psum(self, data):
         return tcstats.psum(data)
 
@@ -256,21 +306,20 @@ class _baseAnalyzer(object):
         return tcstats.central_moments(
                                 self.comm, self.Nx*norm, data, w, wbar, m1)
 
-    def write_mpi_moments(self, data, label, w=None, wbar=None,
-                          m1=None, norm=1.0):
+    def write_moments(self, data, label, w=None, wbar=None, m1=None, norm=1.0):
         """Compute min, max, mean, and 2nd-6th (biased) central
         moments for assigned spatial field"""
         m1, c2, c3, c4, gmin, gmax = tcstats.central_moments(
                             self.comm, self.Nx*norm, data, w, wbar, m1)
 
         if self.comm.rank == 0:
-            with open(self.mpi_moments_file, 'a') as fh:
+            with open(self.moments_file, 'a') as fh:
                 fh.write(('{:s}\t%s\n' % '  '.join(['{:14.8e}']*6))
                          .format(label, m1, c2, c3, c4, gmin, gmax))
 
         return m1, c2, c3, c4, gmin, gmax
 
-    def mpi_mean(self, data, w=None, wbar=None, norm=1.0):
+    def mean(self, data, w=None, wbar=None, norm=1.0):
         N = self.Nx*norm
         if w is None:
             u1 = self.comm.allreduce(self.psum(data), op=MPI.SUM)/N
@@ -282,7 +331,7 @@ class _baseAnalyzer(object):
 
         return u1
 
-    def mpi_rms(self, data, w=None, wbar=None, norm=1.0):
+    def rms(self, data, w=None, wbar=None, norm=1.0):
         """
         Spatial root-mean-square (RMS)
         """
@@ -297,15 +346,17 @@ class _baseAnalyzer(object):
 
         return np.sqrt(m2)
 
-    def mpi_min_max(self, data):
+    def min_max(self, data):
         gmin = self.comm.allreduce(data.min(), op=MPI.MIN)
         gmax = self.comm.allreduce(data.max(), op=MPI.MAX)
 
         return (gmin, gmax)
 
-    # Histograms --------------------------------------------------------------
-    def mpi_histogram1(self, var, fname, metadata='', range=None,
-                       bins=100, w=None, wbar=None, m1=None, norm=1.0):
+    # -------------------------------------------------------------------------
+    # Histograms
+    # -------------------------------------------------------------------------
+    def histogram1(self, var, fname, metadata='', range=None, bins=100,
+                   w=None, wbar=None, m1=None, norm=1.0):
         """MPI-distributed univariate spatial histogram."""
 
         # get histogram and statistical moments (every task gets the results)
@@ -329,8 +380,8 @@ class _baseAnalyzer(object):
 
         return m
 
-    def mpi_histogram2(self, var1, var2, fname, metadata='',
-                       xrange=None, yrange=None, bins=100, w=None):
+    def histogram2(self, var1, var2, fname, metadata='',
+                   xrange=None, yrange=None, bins=100, w=None):
         """MPI-distributed bivariate spatial histogram."""
 
         # get histogram and statistical moments (every task gets the results)
@@ -355,7 +406,72 @@ class _baseAnalyzer(object):
 
         return m
 
-    # Data Transposing --------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Data Communication
+    # -------------------------------------------------------------------------
+    def exchange_ghost_cells(self, var):
+        """
+        Exchange ghost cells, including edge and corner cells, along
+        MPI domain decomposition boundaries. Currently written to
+        discover the number of ghost cells from the difference
+        between var.shape and self.nnx, so the user must correctly size
+        var.
+        """
+        nnx = self.nnx
+        comm = self.comm
+        coords = self.coords
+
+        ND_shape = list(var.shape[-self.ndims:])
+        extra_dims = var.ndim - self.ndims
+
+        ng = (ND_shape - nnx)//2
+        ixe = nnx + ng
+
+        # array[all_slice] == array[:]
+        all_slice = [slice(None, None, None)]*var.ndim
+
+        # displacement along spatial dimension
+        for disp in [-1, 1]:
+            # spatial dimension
+            for dim in range(extra_dims, var.ndim):
+                i = dim - extra_dims
+
+                disp_vec = np.zeros(self.ndims)
+                disp_vec[dim] = disp
+                send_rank = comm.Get_cart_rank(coords + disp_vec)
+                recv_rank = comm.Get_cart_rank(coords - disp_vec)
+
+                send_slice = list(all_slice)
+                recv_slice = list(all_slice)
+
+                # [ng, 2*ng) <-> [nnx+ng, nnx+2*ng)
+                if disp == -1:
+                    send_slice[dim] = slice(ng[i], 2*ng[i])
+                    recv_slice[dim] = slice(ixe[i], None)
+                # [0, ng) <-> [nnx, nnx+ng)
+                else:
+                    send_slice[dim] = slice(nnx[i], ixe[i])
+                    recv_slice[dim] = slice(0, ng[i])
+
+                send_slice = tuple(send_slice)
+                recv_slice = tuple(recv_slice)
+
+                gshape = ND_shape.copy()
+                gshape[dim] = ng
+
+                recv_ghost_cells = np.empty(gshape, dtype=np.float32)
+                irecv_request = comm.Irecv(recv_ghost_cells, recv_rank, dim)
+
+                send_ghost_cells = np.ascontiguousarray(var[send_slice])
+                comm.Send(send_ghost_cells, send_rank, dim)
+
+                irecv_request.wait()
+                var[recv_slice] = recv_ghost_cells
+
+        recv_ghost_cells = send_ghost_cells = None
+
+        return var
+
     def z2y_slab_exchange(self, var):
         """
         Domain decomposition 'transpose' of MPI-distributed scalar array.
@@ -395,7 +511,9 @@ class _baseAnalyzer(object):
 
         return temp1
 
-    # Scalar and Vector Derivatives -------------------------------------------
+    # -------------------------------------------------------------------------
+    # Scalar and Vector Derivatives
+    # -------------------------------------------------------------------------
     def div(self, var):
         """
         Calculate and return the divergence of a vector field.
@@ -481,7 +599,9 @@ class _baseAnalyzer(object):
 
         return A, omega, Aii
 
-    # Underlying Linear Algebra Routines --------------------------------------
+    # -------------------------------------------------------------------------
+    # Underlying Differential Operator Methods
+    # -------------------------------------------------------------------------
     def _centdiff_deriv(self, var, dim=0, k=1):
         """
         Calculate and return the specified derivative of a 3D scalar field at
@@ -544,12 +664,16 @@ class _baseAnalyzer(object):
         return deriv
 
 
+# -----------------------------------------------------------------------------
 class _hitAnalyzer(_baseAnalyzer):
     """
-    class _hitAnalyzer(_baseAnalyzer)
-        ...
+    class _hitAnalyzer(_baseAnalyzer) ...
+    Empty Docstring!
     """
 
+    # -------------------------------------------------------------------------
+    # Class Instantiator
+    # -------------------------------------------------------------------------
     def __init__(self, comm, odir, pid, ndims, L, N, method):
 
         super().__init__(comm, odir, pid, ndims, L, N, 'ignore')
@@ -597,8 +721,9 @@ class _hitAnalyzer(_baseAnalyzer):
                       "Defaulting to Akima spline flux differencing.")
             self.deriv = self._akima_deriv
 
-    # Spectra -----------------------------------------------------------------
-
+    # -------------------------------------------------------------------------
+    # Power Spectral Density Analysis
+    # -------------------------------------------------------------------------
     def spectral_density(self, var, fname, metadata=''):
         """
         Write the 1D power spectral density of var to text file. Method
@@ -640,64 +765,6 @@ class _hitAnalyzer(_baseAnalyzer):
             = 3*pi/4*Int{Ek/k}/Int{Ek}
         """
         return 0.75*np.pi*self.psum(Ek[1:]/self.k1[1:])/self.psum(Ek[1:])
-
-    def scl_fft(self, var):
-        """
-        Convenience function for MPI-distributed 3D r2c FFT of scalar.
-        """
-        return tcfft.rfft3(self.comm, var)
-
-    def scl_ifft(self, var):
-        """
-        Convenience function for MPI-distributed 3D c2r IFFT of scalar.
-        """
-        return tcfft.irfft3(self.comm, var)
-
-    def vec_fft(self, var):
-        """
-        Convenience function for MPI-distributed 3D r2c FFT of vector.
-        """
-        nnz, ny, nx = var.shape[1:]
-        nk = nx//2+1
-        nny = ny//self.comm.size
-        nz = nnz*self.comm.size
-
-        if var.dtype.itemsize == 8:
-            fft_complex = np.complex128
-        elif var.dtype.itemsize == 4:
-            fft_complex = np.complex64
-        else:
-            raise AttributeError("cannot detect dataype of u")
-
-        fvar = np.empty([3, nz, nny, nk], dtype=fft_complex)
-        fvar[0] = tcfft.rfft3(self.comm, var[0])
-        fvar[1] = tcfft.rfft3(self.comm, var[1])
-        fvar[2] = tcfft.rfft3(self.comm, var[2])
-
-        return fvar
-
-    def vec_ifft(self, fvar):
-        """
-        Convenience function for MPI-distributed 3D c2r IFFT of vector.
-        """
-        nz, nny, nk = fvar.shape[1:]
-        nx = (nk-1)*2
-        ny = nny*self.comm.size
-        nnz = nz//self.comm.size
-
-        if fvar.dtype.itemsize == 16:
-            fft_real = np.float64
-        elif fvar.dtype.itemsize == 8:
-            fft_real = np.float32
-        else:
-            raise AttributeError("cannot detect dataype of u")
-
-        var = np.empty([3, nnz, ny, nx], dtype=fft_real)
-        var[0] = tcfft.irfft3(self.comm, fvar[0])
-        var[1] = tcfft.irfft3(self.comm, fvar[1])
-        var[2] = tcfft.irfft3(self.comm, fvar[2])
-
-        return var
 
     def shell_average(self, E3):
         """
@@ -757,3 +824,64 @@ class _hitAnalyzer(_baseAnalyzer):
 
     def vector_filter(self, u, Ghat):
         return self.vec_ifft(Ghat*self.vec_fft(u))
+
+    # -------------------------------------------------------------------------
+    # FFT Wrapper Methods
+    # -------------------------------------------------------------------------
+    def scl_fft(self, var):
+        """
+        Convenience function for MPI-distributed 3D r2c FFT of scalar.
+        """
+        return tcfft.rfft3(self.comm, var)
+
+    def scl_ifft(self, var):
+        """
+        Convenience function for MPI-distributed 3D c2r IFFT of scalar.
+        """
+        return tcfft.irfft3(self.comm, var)
+
+    def vec_fft(self, var):
+        """
+        Convenience function for MPI-distributed 3D r2c FFT of vector.
+        """
+        nnz, ny, nx = var.shape[1:]
+        nk = nx//2+1
+        nny = ny//self.comm.size
+        nz = nnz*self.comm.size
+
+        if var.dtype.itemsize == 8:
+            fft_complex = np.complex128
+        elif var.dtype.itemsize == 4:
+            fft_complex = np.complex64
+        else:
+            raise AttributeError("cannot detect dataype of u")
+
+        fvar = np.empty([3, nz, nny, nk], dtype=fft_complex)
+        fvar[0] = tcfft.rfft3(self.comm, var[0])
+        fvar[1] = tcfft.rfft3(self.comm, var[1])
+        fvar[2] = tcfft.rfft3(self.comm, var[2])
+
+        return fvar
+
+    def vec_ifft(self, fvar):
+        """
+        Convenience function for MPI-distributed 3D c2r IFFT of vector.
+        """
+        nz, nny, nk = fvar.shape[1:]
+        nx = (nk-1)*2
+        ny = nny*self.comm.size
+        nnz = nz//self.comm.size
+
+        if fvar.dtype.itemsize == 16:
+            fft_real = np.float64
+        elif fvar.dtype.itemsize == 8:
+            fft_real = np.float32
+        else:
+            raise AttributeError("cannot detect dataype of u")
+
+        var = np.empty([3, nnz, ny, nx], dtype=fft_real)
+        var[0] = tcfft.irfft3(self.comm, fvar[0])
+        var[1] = tcfft.irfft3(self.comm, fvar[1])
+        var[2] = tcfft.irfft3(self.comm, fvar[2])
+
+        return var

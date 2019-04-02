@@ -1,7 +1,10 @@
 ## Add something here
 
 ## Changelog
-### Latest (September, 24, 2018)
+### Latest (February 13, 2019)
+* added Kmod to spectralLES class
+
+### September 24, 2018
 * bug-fix: missing line in `RK4_integrate` function of `spectralLES` class
 * bug-fix: re-wrote `computeSource_ales244_SGS` function of `ales244_solver` class in `./model_dev/ales44_static_test.py`
 * added `staticGeneralizedEddyViscosityLES` class in `./model_dev/ABC_static_test.py`
