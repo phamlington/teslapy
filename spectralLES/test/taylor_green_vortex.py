@@ -25,7 +25,6 @@ http://tesla.colorado.edu
 from mpi4py import MPI
 import numpy as np
 from spectralLES import spectralLES
-from teslacu.fft import irfft3  # FFT transforms
 import sys
 # from memory_profiler import profile
 # import os
@@ -52,19 +51,11 @@ def taylor_green_vortex():
     if N % comm.size > 0:
         if comm.rank == 0:
             print('Job started with improper number of MPI tasks for the '
-                  'size of the data specified!')
+                  'size of the data specified!', flush=True)
         MPI.Finalize()
         sys.exit(1)
 
     solver = spectralLES(comm, N, L, nu, epsilon=0, Gtype='spectral')
-
-    kmax_dealias = (2./3.)*(N//2+1)
-    solver.les_filter = np.array((abs(solver.K[0]) < kmax_dealias)
-                                 *(abs(solver.K[1]) < kmax_dealias)
-                                 *(abs(solver.K[2]) < kmax_dealias),
-                                 dtype=np.int8)
-
-    sys.stdout.flush()  # forces Python 3 to flush print statements
 
     # -------------------------------------------------------------------------
 
@@ -75,28 +66,23 @@ def taylor_green_vortex():
 
     start = time.time()
 
-    solver.initialize_Taylor_Green_vortex()
+    solver.initialize_TaylorGreen_vortex()
     solver.computeAD = solver.computeAD_vorticity_form
 
     while t < tlimit-1.e-8:
         k = comm.reduce(0.5*np.sum(np.square(solver.U)*(1./N)**3))
         if comm.rank == 0:
-            print('cycle = %2.0d, KE = %12.10f' % (tstep, k))
+            print('cycle = %2.0d, KE = %12.10f' % (tstep, k), flush=True)
 
         t += dt
         tstep += 1
         solver.RK4_integrate(dt)
 
-        sys.stdout.flush()  # forces Python 3 to flush print statements
-
-    solver.U[0] = irfft3(comm, solver.U_hat[0])
-    solver.U[1] = irfft3(comm, solver.U_hat[1])
-    solver.U[2] = irfft3(comm, solver.U_hat[2])
-
     k = comm.reduce(0.5*np.sum(np.square(solver.U)*(1./N)**3))
     k_true = 0.12451526736699045  # from spectralDNS3D_short.py run until T=1.0
     if comm.rank == 0:
-        print("Time = %12.8f, KE = %16.13f" % (time.time()-start, k))
+        print("Time = %12.8f, KE = %16.13f" % (time.time()-start, k),
+              flush=True)
 
         # assert that the two codes must be within single-precision round-off
         # error of each other

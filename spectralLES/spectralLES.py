@@ -661,7 +661,7 @@ class staticSmagorinskyLES(spectralLES):
     # -------------------------------------------------------------------------
     # Instance Methods
     # -------------------------------------------------------------------------
-    def computeSource_Smagorinsky_SGS(self, Cs=1.2, **ignored):
+    def computeSource_Smagorinsky_SGS(self, Cs=0.1, **ignored):
         """
         Smagorinsky Model (takes Cs as input)
 
@@ -683,7 +683,7 @@ class staticSmagorinskyLES(spectralLES):
         # compute the leading coefficient, nu_T = 2|S|(Cs*D)**2
         nuT = self.W[0]
         nuT[:] = np.sqrt(np.sum(np.square(self.S), axis=(0, 1)))
-        nuT *= (Cs*self.D_les)**2
+        nuT *= -2*(Cs*self.D_les)**2
 
         # --------------------------------------------------------------
         # Compute FFT{div(tau)} and add to RHS update

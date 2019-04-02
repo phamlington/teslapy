@@ -29,12 +29,13 @@ https://github.com/teslacu/spectralLES.git
 
 from mpi4py import MPI
 import numpy as np
+import os
 import sys
 import time
 from math import sqrt, pi
 import argparse
 from spectralLES import staticSmagorinskyLES
-from teslacu import mpiWriter
+# from teslacu import mpiWriter
 from teslacu.fft import shell_average
 from teslacu.stats import psum
 
@@ -174,7 +175,7 @@ def staticSmag_HIT_demo(pp=None, sp=None):
             spect1d = shell_average(comm, spect3d, Kmod)
 
             if comm.rank == 0:
-                fname = '%s/%s-%3.3d_KE.spectra' % (pp.adir, pp.pid, ispec)
+                fname = '%s/%s-%3.3d_KE.spectra' % (pp.odir, pp.pid, ispec)
                 fh = open(fname, 'w')
                 metadata = Ek_fmt('u_i')
                 fh.write('%s\n' % metadata)
@@ -184,16 +185,16 @@ def staticSmag_HIT_demo(pp=None, sp=None):
             t_spec += dt_spec
             ispec += 1
 
-        # -- output physical-space solution fields for restarting and analysis
-        if t_test >= t_rst:
-            writer.write_scalar('%s-Velocity1_%3.3d.rst' %
-                                (pp.pid, irst), U[0], np.float64)
-            writer.write_scalar('%s-Velocity2_%3.3d.rst' %
-                                (pp.pid, irst), U[1], np.float64)
-            writer.write_scalar('%s-Velocity3_%3.3d.rst' %
-                                (pp.pid, irst), U[2], np.float64)
-            t_rst += dt_rst
-            irst += 1
+        # # -- output physical-space solution fields for restarting and analysis
+        # if t_test >= t_rst:
+        #     writer.write_scalar('%s-Velocity1_%3.3d.rst' %
+        #                         (pp.pid, irst), U[0], np.float64)
+        #     writer.write_scalar('%s-Velocity2_%3.3d.rst' %
+        #                         (pp.pid, irst), U[1], np.float64)
+        #     writer.write_scalar('%s-Velocity3_%3.3d.rst' %
+        #                         (pp.pid, irst), U[2], np.float64)
+        #     t_rst += dt_rst
+        #     irst += 1
 
         # -- Update the forcing mean scaling
         if t_test >= t_drv:
@@ -240,13 +241,13 @@ def staticSmag_HIT_demo(pp=None, sp=None):
         spect1d.tofile(fh, sep='\n', format='% .8e')
         fh.close()
 
-    # -- output physical-space solution fields for restarting and analysis
-    writer.write_scalar('%s-Velocity1_%3.3d.rst' %
-                        (pp.pid, irst), U[0], np.float64)
-    writer.write_scalar('%s-Velocity2_%3.3d.rst' %
-                        (pp.pid, irst), U[1], np.float64)
-    writer.write_scalar('%s-Velocity3_%3.3d.rst' %
-                        (pp.pid, irst), U[2], np.float64)
+    # # -- output physical-space solution fields for restarting and analysis
+    # writer.write_scalar('%s-Velocity1_%3.3d.rst' %
+    #                     (pp.pid, irst), U[0], np.float64)
+    # writer.write_scalar('%s-Velocity2_%3.3d.rst' %
+    #                     (pp.pid, irst), U[1], np.float64)
+    # writer.write_scalar('%s-Velocity3_%3.3d.rst' %
+    #                     (pp.pid, irst), U[2], np.float64)
 
     return
 

@@ -300,6 +300,9 @@ def ABC_static_test(pp=None, sp=None):
 
     # -------------------------------------------------------------------------
     # Run the simulation
+    if comm.rank == 0:
+        t1 = time.time()
+
     while t_sim < pp.tlimit+1.e-8:
 
         # -- Update the dynamic dt based on CFL constraint
@@ -363,6 +366,9 @@ def ABC_static_test(pp=None, sp=None):
 
     # -------------------------------------------------------------------------
     # Finalize the simulation
+    if comm.rank == 0:
+        t2 = time.time()
+        print('Program took %12.7f s' % ((t2-t1)))
 
     KE = 0.5*comm.allreduce(psum(np.square(U)))/solver.Nx
     tseries.append([tstep, t_sim, KE])
@@ -424,7 +430,7 @@ config_group.add_argument('--dt_drv', type=float,
 time_group = hit_parser.add_argument_group('time integration arguments')
 
 time_group.add_argument('--cfl', type=float, default=0.45, help='CFL number')
-time_group.add_argument('-t', '--tlimit', type=float, default=0.25,
+time_group.add_argument('-t', '--tlimit', type=float, default=1.0,
                         help='solution time limit')
 time_group.add_argument('-w', '--twall', type=float,
                         help='run wall-time limit (ignored for now!!!)')

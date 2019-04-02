@@ -14,16 +14,20 @@
 # https://github.com/teslacu/spectralLES.git
 #**************************************************************************************************
 #
-# For simulations @ 256^3:
-# dx/eta = 1 -> nu = 0.00706 (DNS for 2nd, maybe 3rd, order statistics)
-# dx/eta = 2 -> nu = 0.0028  (DNS for at best 2nd-order statistics)
-# dx/eta = 4 -> nu = 0.0011  (well-resolved LES)
-# eps_inj = 1.2
-# k_peak = 0-64 (depending on how much small-scale energy you'd like in IC)
+# Johns Hopkins University Forced Isotropic Turbulence Dataset:
+#   N = 1024
+#   L = 2*pi m
+#   nu = 0.000185 m^2/s
+#   dt = 0.0002 s (fixed Adams-Bashforth timestepping)
 #
-# Everything else stays the same.
-# For simulations @ 64^3: dx/eta =  4, 8, and 16 for above nu
-#
+#   *Spatiotemporal averages over 10.056 s*
+#   KE       = 0.705
+#   epsilon  = 0.103 (forcing holds E(k) constant for |k| < 3)
+#   ell/L    = 0.22
+#   tau_ell  = 1.9883
+#   eta/dx   = 0.45633
+#   kmax     = 482.72 (N*sqrt(2)/3 dealiasing filter)
+#   kmax*eta = 1.352
 #
 # !NOTE! on default tlimit/dt_* values
 #   homogeneous_isotropic_turbulence.py (and in some cases spectralLES) uses the following
@@ -39,7 +43,7 @@
 
 <problem>
 
-pid         = jhu_N128_nomodel          # problem ID, (analysis file prefix only for now)
+pid         = jhu_N128_staticSmag       # problem ID, (analysis file prefix only for now)
                                         # program default = test
 
 # L           = [2*pi, 2*pi, 2*pi]        # domain dimensions, don't change from default for now!
@@ -98,7 +102,7 @@ kexp        = -0.833                    # power-law scaling of Gamie-Ostriker sp
 # kpeak       =                           # exponential-decay scaling of Gamie-Ostriker spectrum
 #                                         # program default = N//4
 
-Einit       = 0.35                      # turbulence kinetic energy of initial condition
+Einit       = 0.56                      # turbulence kinetic energy of initial condition
                                         # program default = Urms^2 = 2*KE_equil
 
 <restart>
